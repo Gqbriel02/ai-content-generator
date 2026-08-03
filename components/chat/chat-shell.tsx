@@ -1,0 +1,538 @@
+"use client";
+/* eslint-disable @next/next/no-img-element */
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import {
+  ActionIcon,
+  AppShell,
+  Badge,
+  Box,
+  Burger,
+  Button,
+  FileButton,
+  Group,
+  Loader,
+  NavLink,
+  ScrollArea,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  Title,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import {
+  IconCheckbox,
+  IconFolderPlus,
+  IconLogout,
+  IconMessagePlus,
+  IconPhoto,
+  IconSend,
+  IconX,
+} from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import { marked } from "marked";
+import DOMPurify from "isomorphic-dompurify";
+import { TaskCard } from "@/components/chat/task-card";
+import type { TaskCardPayload } from "@/types/domain";
+
+type Folder = {
+  id: string;
+  name: string;
+};
+
+type Chat = {
+  id: string;
+  title: string;
+  folder_id: string | null;
+  system_prompt: string | null;
+};
+
+type Message = {
+  id: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content_text: string;
+  structured_payload: TaskCardPayload | null;
+  attachments?: { signedUrl: string; mimeType: string; storagePath: string }[];
+};
+
+type ChatShellProps = {
+  chatId?: string;
+};
+
+function MarkdownView({ value }: { value: string }) {
+  const html = useMemo(() => DOMPurify.sanitize(marked.parse(value, { breaks: true }) as string), [value]);
+  return <Box dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+export function ChatShell({ chatId }: ChatShellProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useParams<{ chatId?: string }>();
+  const activeChatId = typeof params.chatId === "string" ? params.chatId : chatId;
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [content, setContent] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [activeMode, setActiveMode] = useState<"chat" | "task">("chat");
+  const [navbarOpened, { toggle: toggleNavbar, close: closeNavbar }] = useDisclosure(false);
+  const [asideOpened, { toggle: toggleAside }] = useDisclosure(false);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[]
+  >([]);
+
+  async function fetchBootstrap() {
+    setLoading(true);
+    try {
+      const [folderRes, chatRes] = await Promise.all([fetch("/api/folders"), fetch("/api/chats")]);
+      const folderJson = await folderRes.json();
+      const chatJson = await chatRes.json();
+
+      if (!folderRes.ok || !chatRes.ok) throw new Error("Failed to load data.");
+      setFolders(folderJson.data);
+      setChats(chatJson.data);
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Error",
+        message: error instanceof Error ? error.message : "Failed to load data.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchMessages(targetChatId: string) {
+    const [chatRes, messageRes] = await Promise.all([
+      fetch(`/api/chats/${targetChatId}`),
+      fetch(`/api/chats/${targetChatId}/messages`),
+    ]);
+    const chatJson = await chatRes.json();
+    const messageJson = await messageRes.json();
+    if (!chatRes.ok || !messageRes.ok) {
+      throw new Error(messageJson?.error?.message ?? "Failed to load messages.");
+    }
+    setMessages(messageJson.data);
+    setSystemPrompt(chatJson.data.system_prompt ?? "");
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (cancelled) return;
+      await fetchBootstrap();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!activeChatId) {
+        if (!cancelled) {
+          setMessages([]);
+          setSystemPrompt("");
+        }
+        return;
+      }
+
+      try {
+        await fetchMessages(activeChatId);
+      } catch (error) {
+        if (!cancelled) {
+          notifications.show({
+            color: "red",
+            title: "Error",
+            message: error instanceof Error ? error.message : "An error occurred.",
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChatId]);
+
+  async function createFolder() {
+    const name = window.prompt("Folder name");
+    if (!name?.trim()) return;
+
+    const response = await fetch("/api/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) return;
+    await fetchBootstrap();
+  }
+
+  async function createChat() {
+    const response = await fetch("/api/chats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: `Chat ${new Date().toLocaleString()}`,
+        folderId: null,
+      }),
+    });
+    const json = await response.json();
+    if (!response.ok) return;
+    router.push(`/chat/${json.data.id}`);
+    router.refresh();
+  }
+
+  async function uploadImage(file: File | null) {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/uploads", {
+      method: "POST",
+      body: formData,
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      notifications.show({ color: "red", title: "Upload Failed", message: json?.error?.message });
+      return;
+    }
+
+    setPendingAttachments((previous) => [...previous, json.data]);
+  }
+
+  async function sendMessage() {
+    if (!activeChatId || !content.trim()) return;
+    setSending(true);
+    try {
+      const response = await fetch(`/api/chats/${activeChatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          mode: activeMode,
+          attachments: pendingAttachments.map((item) => ({
+            storagePath: item.storagePath,
+            mimeType: item.mimeType,
+            sizeBytes: item.sizeBytes,
+          })),
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error?.message ?? "Mesajul nu a fost trimis.");
+
+      setContent("");
+      setPendingAttachments([]);
+      await fetchMessages(activeChatId);
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Error",
+        message: error instanceof Error ? error.message : "An error occurred.",
+      });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function removePendingAttachment(storagePath: string) {
+    setPendingAttachments((previous) =>
+      previous.filter((attachment) => attachment.storagePath !== storagePath),
+    );
+  }
+
+  async function saveSystemPrompt() {
+    if (!activeChatId) return;
+    const response = await fetch(`/api/chats/${activeChatId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemPrompt,
+      }),
+    });
+    if (response.ok) {
+      notifications.show({ color: "green", title: "Saved", message: "System prompt updated." });
+      fetchBootstrap();
+    }
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
+
+  return (
+    <AppShell
+      header={{ height: 60 }}
+      navbar={{
+        width: 320,
+        breakpoint: "lg",
+        collapsed: { mobile: !navbarOpened },
+      }}
+      aside={{
+        width: 320,
+        breakpoint: "lg",
+        collapsed: { mobile: !asideOpened },
+      }}
+      padding="md"
+      styles={{
+        main: {
+          backgroundColor: "#f8fbff",
+        },
+        header: {
+          backgroundColor: "#ffffff",
+          borderBottom: "1px solid var(--mantine-color-gray-3)",
+        },
+        navbar: {
+          backgroundColor: "#ffffff",
+          borderRight: "1px solid var(--mantine-color-gray-3)",
+        },
+        aside: {
+          backgroundColor: "#ffffff",
+          borderLeft: "1px solid var(--mantine-color-gray-3)",
+        },
+      }}
+    >
+      <AppShell.Header>
+        <Group h="100%" px="md" justify="space-between">
+          <Group>
+            <Burger
+              opened={navbarOpened}
+              onClick={toggleNavbar}
+              hiddenFrom="lg"
+              size="sm"
+              aria-label="Toggle folders panel"
+            />
+            <Title order={3}>AI Chat Studio</Title>
+          </Group>
+          <Group>
+            <Burger
+              opened={asideOpened}
+              onClick={toggleAside}
+              hiddenFrom="lg"
+              size="sm"
+              aria-label="Toggle settings panel"
+            />
+            <Button leftSection={<IconFolderPlus size={16} />} variant="light" onClick={createFolder}>
+              Folder
+            </Button>
+            <Button leftSection={<IconMessagePlus size={16} />} onClick={createChat}>
+              New Chat
+            </Button>
+            <ActionIcon variant="subtle" onClick={logout} aria-label="logout">
+              <IconLogout size={18} />
+            </ActionIcon>
+          </Group>
+        </Group>
+      </AppShell.Header>
+
+      <AppShell.Navbar p="sm">
+        <Stack gap="sm">
+          <Text fw={600}>Folders</Text>
+          {loading ? (
+            <Loader size="sm" />
+          ) : (
+            folders.map((folder) => (
+              <Box key={folder.id} p={8} style={{ border: "1px solid var(--mantine-color-gray-3)", borderRadius: 8 }}>
+                <Text size="sm">{folder.name}</Text>
+                <Stack gap={2} mt={6}>
+                  {chats
+                    .filter((chat) => chat.folder_id === folder.id)
+                    .map((chat) => (
+                      <NavLink
+                        key={chat.id}
+                        component={Link}
+                        href={`/chat/${chat.id}`}
+                        label={chat.title}
+                        active={pathname === `/chat/${chat.id}`}
+                        onClick={() => closeNavbar()}
+                      />
+                    ))}
+                </Stack>
+              </Box>
+            ))
+          )}
+          <Text fw={600} mt="sm">
+            No Folder
+          </Text>
+          <Stack gap={2}>
+            {chats
+              .filter((chat) => !chat.folder_id)
+              .map((chat) => (
+                <NavLink
+                  key={chat.id}
+                  component={Link}
+                  href={`/chat/${chat.id}`}
+                  label={chat.title}
+                  active={pathname === `/chat/${chat.id}`}
+                  onClick={() => closeNavbar()}
+                />
+              ))}
+          </Stack>
+        </Stack>
+      </AppShell.Navbar>
+
+      <AppShell.Aside p="sm">
+        <Stack gap="sm">
+          <Text fw={600}>System Prompt</Text>
+          <Textarea
+            minRows={10}
+            value={systemPrompt}
+            onChange={(event) => setSystemPrompt(event.currentTarget.value)}
+            placeholder="Define the assistant's behavior."
+          />
+          <Button variant="light" onClick={saveSystemPrompt} disabled={!activeChatId}>
+            Save
+          </Button>
+          <Text fw={600} mt="sm">
+            Answer Mode
+          </Text>
+          <Select
+            data={[
+              { value: "chat", label: "Conversational" },
+              { value: "task", label: "Task card (checkbox/radio/select)" },
+            ]}
+            value={activeMode}
+            onChange={(value) => setActiveMode((value as "chat" | "task") ?? "chat")}
+          />
+          <Text size="xs" c="dimmed">
+            Task mode uses structured JSON schema output.
+          </Text>
+        </Stack>
+      </AppShell.Aside>
+
+      <AppShell.Main>
+        {!activeChatId ? (
+          <Stack align="center" justify="center" h="80vh">
+            <Title order={2}>Select a chat or create a new one</Title>
+          </Stack>
+        ) : (
+          <Stack gap="md" h="calc(100vh - 110px)">
+            <ScrollArea type="auto" flex={1} offsetScrollbars style={{ backgroundColor: "#ffffff", borderRadius: 12 }}>
+              <Stack gap="md" p="xs">
+                {messages.map((message) => (
+                  <Box
+                    key={message.id}
+                    p="md"
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid var(--mantine-color-gray-3)",
+                      background:
+                        message.role === "user"
+                          ? "var(--mantine-color-blue-0)"
+                          : "var(--mantine-color-gray-0)",
+                    }}
+                  >
+                    <Group justify="space-between" mb={8}>
+                      <Badge variant="light">{message.role}</Badge>
+                    </Group>
+                    <MarkdownView value={message.content_text || ""} />
+                    {message.attachments?.length ? (
+                      <Group mt="sm">
+                        {message.attachments.map((attachment) => (
+                          <img
+                            key={attachment.storagePath}
+                            src={attachment.signedUrl}
+                            alt="Attachment"
+                            style={{ width: 150, borderRadius: 8 }}
+                          />
+                        ))}
+                      </Group>
+                    ) : null}
+                    {message.structured_payload ? (
+                      <Box mt="sm">
+                        <TaskCard
+                          messageId={message.id}
+                          payload={message.structured_payload}
+                          onSubmitted={async () => {
+                            if (!activeChatId) return;
+                            await fetchMessages(activeChatId);
+                          }}
+                        />
+                      </Box>
+                    ) : null}
+                  </Box>
+                ))}
+              </Stack>
+            </ScrollArea>
+
+            <Stack gap="xs">
+              {pendingAttachments.length ? (
+                <Group>
+                  {pendingAttachments.map((attachment) => (
+                    <Box
+                      key={attachment.storagePath}
+                      style={{
+                        position: "relative",
+                        border: "1px solid var(--mantine-color-gray-3)",
+                        borderRadius: 8,
+                        padding: 4,
+                        background: "#fff",
+                      }}
+                    >
+                      {attachment.signedUrl ? (
+                        <img
+                          src={attachment.signedUrl}
+                          alt="Preview"
+                          style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 6 }}
+                        />
+                      ) : (
+                        <Badge variant="light" leftSection={<IconPhoto size={12} />}>
+                          imagine atasata
+                        </Badge>
+                      )}
+                      <ActionIcon
+                        color="red"
+                        variant="filled"
+                        size="sm"
+                        aria-label="Sterge imagine"
+                        style={{ position: "absolute", top: -8, right: -8 }}
+                        onClick={() => removePendingAttachment(attachment.storagePath)}
+                      >
+                        <IconX size={12} />
+                      </ActionIcon>
+                    </Box>
+                  ))}
+                </Group>
+              ) : null}
+              <Group align="flex-end">
+                <Textarea
+                  placeholder="Write a message..."
+                  minRows={2}
+                  autosize
+                  value={content}
+                  onChange={(event) => setContent(event.currentTarget.value)}
+                  style={{ flex: 1 }}
+                />
+                <FileButton onChange={uploadImage} accept="image/png,image/jpeg,image/webp,image/gif">
+                  {(props) => (
+                    <ActionIcon variant="light" size="lg" {...props} aria-label="upload-image">
+                      <IconPhoto size={18} />
+                    </ActionIcon>
+                  )}
+                </FileButton>
+                <ActionIcon
+                  variant={activeMode === "task" ? "filled" : "light"}
+                  size="lg"
+                  onClick={() => setActiveMode((prev) => (prev === "task" ? "chat" : "task"))}
+                  aria-label="toggle-task-mode"
+                >
+                  <IconCheckbox size={18} />
+                </ActionIcon>
+                <ActionIcon size="lg" onClick={sendMessage} loading={sending} aria-label="send">
+                  <IconSend size={18} />
+                </ActionIcon>
+              </Group>
+            </Stack>
+          </Stack>
+        )}
+      </AppShell.Main>
+    </AppShell>
+  );
+}

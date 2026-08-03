@@ -1,0 +1,33 @@
+@import "tailwindcss";
+@import "@mantine/core/styles.css";
+@import "@mantine/notifications/styles.css";
+@import "@mantine/dropzone/styles.css";
+
+:root {
+  --background: #ffffff;
+  --foreground: #1f2937;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+  background: #f8fbff;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #f8fbff 0%, #eef4ff 55%, #e9effa 100%);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Inter, Arial, sans-serif;
+}
+
+#__next {
+  min-height: 100%;
+}
