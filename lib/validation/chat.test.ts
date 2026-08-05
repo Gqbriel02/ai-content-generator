@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMessageSchema } from "./chat";
+import { createMessageSchema, historyQuerySchema, ratingSchema } from "./chat";
 
 describe("createMessageSchema", () => {
   it.each(["", "   ", "\n\t"])("rejects empty message content", (content) => {
@@ -18,5 +18,30 @@ describe("createMessageSchema", () => {
       expect(result.data.content).toBe("Generate a summary.");
       expect(result.data.attachments).toEqual([]);
     }
+  });
+});
+
+describe("historyQuerySchema", () => {
+  it("trims search and defaults to newest", () => {
+    expect(historyQuerySchema.parse({ q: "  example  " })).toEqual({ q: "example", sort: "newest" });
+  });
+
+  it.each(["newest", "oldest"])("accepts the %s sort", (sort) => {
+    expect(historyQuerySchema.safeParse({ q: "", sort }).success).toBe(true);
+  });
+
+  it("rejects unknown sorts and overly long searches", () => {
+    expect(historyQuerySchema.safeParse({ q: "", sort: "title" }).success).toBe(false);
+    expect(historyQuerySchema.safeParse({ q: "a".repeat(201), sort: "newest" }).success).toBe(false);
+  });
+});
+
+describe("ratingSchema", () => {
+  it.each([1, -1, null])("accepts rating %s", (rating) => {
+    expect(ratingSchema.safeParse({ rating }).success).toBe(true);
+  });
+
+  it.each([0, 2, "1", undefined])("rejects unsupported rating %s", (rating) => {
+    expect(ratingSchema.safeParse({ rating }).success).toBe(false);
   });
 });

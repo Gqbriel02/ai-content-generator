@@ -13,13 +13,79 @@ export async function listFolders(profileId: string) {
   return data;
 }
 
-export async function listChats(profileId: string) {
+export type HistorySort = "newest" | "oldest";
+
+export const CHAT_HISTORY_LIMIT = 100;
+
+type HistoryChat = {
+  id: string;
+  title: string;
+  created_at: string;
+  messages?: { content_text: string | null }[] | null;
+  [key: string]: unknown;
+};
+
+export function filterAndSortChats(
+  chats: HistoryChat[],
+  search: string,
+  sort: HistorySort,
+  limit = CHAT_HISTORY_LIMIT,
+) {
+  const needle = search.trim().toLocaleLowerCase();
+  const filtered = needle
+    ? chats.filter((chat) =>
+        chat.title.toLocaleLowerCase().includes(needle) ||
+        (chat.messages ?? []).some((message) =>
+          (message.content_text ?? "").toLocaleLowerCase().includes(needle),
+        ),
+      )
+    : chats;
+
+  return filtered
+    .toSorted((left, right) => {
+      const timestampDifference = Date.parse(left.created_at) - Date.parse(right.created_at);
+      if (timestampDifference !== 0) {
+        return sort === "oldest" ? timestampDifference : -timestampDifference;
+      }
+      return sort === "oldest"
+        ? left.id.localeCompare(right.id)
+        : right.id.localeCompare(left.id);
+    })
+    .slice(0, limit)
+    .map((chat) => {
+      const result = { ...chat };
+      delete result.messages;
+      return result;
+    });
+}
+
+export async function listChats(
+  profileId: string,
+  options: { search?: string; sort?: HistorySort; limit?: number } = {},
+) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("chats")
-    .select("*")
+    .select("*, messages(content_text)")
+    .eq("profile_id", profileId);
+  if (error) throw error;
+  return filterAndSortChats(
+    (data ?? []) as HistoryChat[],
+    options.search ?? "",
+    options.sort ?? "newest",
+    Math.min(options.limit ?? CHAT_HISTORY_LIMIT, CHAT_HISTORY_LIMIT),
+  );
+}
+
+export async function updateChatRating(profileId: string, chatId: string, rating: 1 | -1 | null) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("chats")
+    .update({ rating })
+    .eq("id", chatId)
     .eq("profile_id", profileId)
-    .order("updated_at", { ascending: false });
+    .select("rating")
+    .maybeSingle();
   if (error) throw error;
   return data;
 }

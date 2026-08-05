@@ -19,6 +19,7 @@ import {
   Select,
   Stack,
   Text,
+  TextInput,
   Textarea,
   Title,
 } from "@mantine/core";
@@ -30,6 +31,9 @@ import {
   IconMessagePlus,
   IconPhoto,
   IconSend,
+  IconSearch,
+  IconThumbDown,
+  IconThumbUp,
   IconX,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
@@ -48,6 +52,7 @@ type Chat = {
   title: string;
   folder_id: string | null;
   system_prompt: string | null;
+  rating: 1 | -1 | null;
 };
 
 type Message = {
@@ -77,6 +82,12 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [rating, setRating] = useState<1 | -1 | null>(null);
+  const [ratingPending, setRatingPending] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [content, setContent] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [activeMode, setActiveMode] = useState<"chat" | "task">("chat");
@@ -86,10 +97,17 @@ export function ChatShell({ chatId }: ChatShellProps) {
     { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[]
   >([]);
 
-  async function fetchBootstrap() {
+  async function fetchBootstrap(nextSearch = search, nextSort = sort) {
     setLoading(true);
+    setHistoryError(false);
     try {
-      const [folderRes, chatRes] = await Promise.all([fetch("/api/folders"), fetch("/api/chats")]);
+      const query = new URLSearchParams();
+      if (nextSearch) query.set("q", nextSearch);
+      if (nextSort === "oldest") query.set("sort", "oldest");
+      const [folderRes, chatRes] = await Promise.all([
+        fetch("/api/folders"),
+        fetch(`/api/chats${query.size ? `?${query}` : ""}`),
+      ]);
       const folderJson = await folderRes.json();
       const chatJson = await chatRes.json();
 
@@ -97,6 +115,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
       setFolders(folderJson.data);
       setChats(chatJson.data);
     } catch (error) {
+      setHistoryError(true);
       notifications.show({
         color: "red",
         title: "Error",
@@ -119,17 +138,26 @@ export function ChatShell({ chatId }: ChatShellProps) {
     }
     setMessages(messageJson.data);
     setSystemPrompt(chatJson.data.system_prompt ?? "");
+    setRating(chatJson.data.rating ?? null);
   }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (cancelled) return;
-      await fetchBootstrap();
+      const query = new URLSearchParams(window.location.search);
+      const initialSearch = (query.get("q") ?? "").trim().slice(0, 200);
+      const initialSort = query.get("sort") === "oldest" ? "oldest" : "newest";
+      setSearchDraft(initialSearch);
+      setSearch(initialSearch);
+      setSort(initialSort);
+      await fetchBootstrap(initialSearch, initialSort);
     })();
     return () => {
       cancelled = true;
     };
+  // Bootstrap intentionally runs only once; subsequent history changes call fetchBootstrap explicitly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -139,10 +167,12 @@ export function ChatShell({ chatId }: ChatShellProps) {
         if (!cancelled) {
           setMessages([]);
           setSystemPrompt("");
+          setRating(null);
         }
         return;
       }
 
+      setRating(null);
       try {
         await fetchMessages(activeChatId);
       } catch (error) {
@@ -159,6 +189,54 @@ export function ChatShell({ chatId }: ChatShellProps) {
       cancelled = true;
     };
   }, [activeChatId]);
+
+  function chatHref(targetChatId: string) {
+    const query = new URLSearchParams();
+    if (search) query.set("q", search);
+    if (sort === "oldest") query.set("sort", "oldest");
+    return `/chat/${targetChatId}${query.size ? `?${query}` : ""}`;
+  }
+
+  function applyHistoryQuery(nextSearch: string, nextSort: "newest" | "oldest") {
+    const normalizedSearch = nextSearch.trim();
+    setSearch(normalizedSearch);
+    setSearchDraft(normalizedSearch);
+    setSort(nextSort);
+    const query = new URLSearchParams(window.location.search);
+    if (normalizedSearch) query.set("q", normalizedSearch);
+    else query.delete("q");
+    if (nextSort === "oldest") query.set("sort", "oldest");
+    else query.delete("sort");
+    window.history.replaceState(null, "", `${window.location.pathname}${query.size ? `?${query}` : ""}`);
+    void fetchBootstrap(normalizedSearch, nextSort);
+  }
+
+  async function updateRating(next: 1 | -1) {
+    if (!activeChatId || ratingPending) return;
+    const requestedRating = rating === next ? null : next;
+    setRatingPending(true);
+    try {
+      const response = await fetch(`/api/chats/${activeChatId}/rating`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: requestedRating }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error?.message ?? "The rating could not be saved.");
+      setRating(json.data.rating);
+      setChats((current) => current.map((chat) =>
+        chat.id === activeChatId ? { ...chat, rating: json.data.rating } : chat,
+      ));
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Rating not saved",
+        message: error instanceof Error ? error.message : "The rating could not be saved. Please try again.",
+      });
+    } finally {
+      setRatingPending(false);
+    }
+  }
 
   async function createFolder() {
     const name = window.prompt("Folder name");
@@ -334,10 +412,52 @@ export function ChatShell({ chatId }: ChatShellProps) {
 
       <AppShell.Navbar p="sm">
         <Stack gap="sm">
+          <Text fw={600}>History</Text>
+          <form onSubmit={(event) => { event.preventDefault(); applyHistoryQuery(searchDraft, sort); }}>
+            <Group gap="xs" wrap="nowrap">
+              <TextInput
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.currentTarget.value)}
+                placeholder="Search history"
+                aria-label="Search history"
+                maxLength={200}
+                leftSection={<IconSearch size={16} />}
+                rightSection={searchDraft ? (
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label="Clear search"
+                    onClick={() => applyHistoryQuery("", sort)}
+                  ><IconX size={14} /></ActionIcon>
+                ) : null}
+                style={{ flex: 1 }}
+              />
+              <Button type="submit" variant="light" px="sm">Search</Button>
+            </Group>
+          </form>
+          <Select
+            aria-label="Sort history"
+            value={sort}
+            data={[
+              { value: "newest", label: "Newest first" },
+              { value: "oldest", label: "Oldest first" },
+            ]}
+            onChange={(value) => applyHistoryQuery(search, value === "oldest" ? "oldest" : "newest")}
+            allowDeselect={false}
+          />
+          {historyError ? (
+            <Stack gap="xs">
+              <Text size="sm" c="red">History could not be loaded.</Text>
+              <Button size="xs" variant="light" onClick={() => fetchBootstrap()}>Try again</Button>
+            </Stack>
+          ) : loading ? (
+            <Group gap="xs"><Loader size="sm" /><Text size="sm">Loading history…</Text></Group>
+          ) : chats.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              {search ? "No history items match your search." : "No history yet. Create a chat to get started."}
+            </Text>
+          ) : null}
           <Text fw={600}>Folders</Text>
-          {loading ? (
-            <Loader size="sm" />
-          ) : (
+          {!loading && !historyError ? (
             folders.map((folder) => (
               <Box key={folder.id} p={8} style={{ border: "1px solid var(--mantine-color-gray-3)", borderRadius: 8 }}>
                 <Text size="sm">{folder.name}</Text>
@@ -348,7 +468,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
                       <NavLink
                         key={chat.id}
                         component={Link}
-                        href={`/chat/${chat.id}`}
+                        href={chatHref(chat.id)}
                         label={chat.title}
                         active={pathname === `/chat/${chat.id}`}
                         onClick={() => closeNavbar()}
@@ -357,24 +477,24 @@ export function ChatShell({ chatId }: ChatShellProps) {
                 </Stack>
               </Box>
             ))
-          )}
-          <Text fw={600} mt="sm">
+          ) : null}
+          {!loading && !historyError ? <Text fw={600} mt="sm">
             No Folder
-          </Text>
-          <Stack gap={2}>
+          </Text> : null}
+          {!loading && !historyError ? <Stack gap={2}>
             {chats
               .filter((chat) => !chat.folder_id)
               .map((chat) => (
                 <NavLink
                   key={chat.id}
                   component={Link}
-                  href={`/chat/${chat.id}`}
+                  href={chatHref(chat.id)}
                   label={chat.title}
                   active={pathname === `/chat/${chat.id}`}
                   onClick={() => closeNavbar()}
                 />
               ))}
-          </Stack>
+          </Stack> : null}
         </Stack>
       </AppShell.Navbar>
 
@@ -461,6 +581,26 @@ export function ChatShell({ chatId }: ChatShellProps) {
                 ))}
               </Stack>
             </ScrollArea>
+
+            {messages.some((message) => message.role === "assistant") ? (
+              <Group justify="flex-end" gap="xs">
+                <Text size="sm" c="dimmed">Rate this response</Text>
+                <ActionIcon
+                  color="green"
+                  variant={rating === 1 ? "filled" : "light"}
+                  disabled={ratingPending}
+                  onClick={() => updateRating(1)}
+                  aria-label={rating === 1 ? "Remove positive rating" : "Rate this response positively"}
+                ><IconThumbUp size={18} /></ActionIcon>
+                <ActionIcon
+                  color="red"
+                  variant={rating === -1 ? "filled" : "light"}
+                  disabled={ratingPending}
+                  onClick={() => updateRating(-1)}
+                  aria-label={rating === -1 ? "Remove negative rating" : "Rate this response negatively"}
+                ><IconThumbDown size={18} /></ActionIcon>
+              </Group>
+            ) : null}
 
             <Stack gap="xs">
               {pendingAttachments.length ? (

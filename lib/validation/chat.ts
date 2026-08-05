@@ -21,6 +21,17 @@ export const updateChatSchema = z.object({
   systemPrompt: z.string().max(4000).optional(),
 });
 
+export const HISTORY_SEARCH_MAX_LENGTH = 200;
+
+export const historyQuerySchema = z.object({
+  q: z.string().trim().max(HISTORY_SEARCH_MAX_LENGTH).default(""),
+  sort: z.enum(["newest", "oldest"]).default("newest"),
+});
+
+export const ratingSchema = z.object({
+  rating: z.union([z.literal(1), z.literal(-1), z.null()]),
+}).strict();
+
 export const attachmentInputSchema = z.object({
   storagePath: z.string().min(1),
   mimeType: z.string().min(1),

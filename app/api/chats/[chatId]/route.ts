@@ -24,7 +24,12 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/chats/[cha
   const auth = await requireSession();
   if ("error" in auth) return auth.error;
   const { chatId } = await ctx.params;
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return fail("The request body must contain valid JSON.", 400);
+  }
   const parsed = updateChatSchema.safeParse(body);
   if (!parsed.success) {
     return fail("Invalid chat details.", 400, parsed.error.flatten());
@@ -34,7 +39,9 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/chats/[cha
   const { data, error } = await supabase
     .from("chats")
     .update({
-      ...parsed.data,
+      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+      ...(parsed.data.folderId !== undefined ? { folder_id: parsed.data.folderId } : {}),
+      ...(parsed.data.systemPrompt !== undefined ? { system_prompt: parsed.data.systemPrompt } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", chatId)
