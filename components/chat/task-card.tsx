@@ -32,20 +32,20 @@ export function TaskCard({ messageId, payload, onSubmitted }: TaskCardProps) {
         const json = (await response.json().catch(() => null)) as
           | { error?: { message?: string } }
           | null;
-        throw new Error(json?.error?.message ?? "Trimiterea task-ului a esuat.");
+        throw new Error(json?.error?.message ?? "The task could not be submitted.");
       }
 
       await onSubmitted();
       notifications.show({
         color: "green",
-        title: "Task trimis",
-        message: "Raspunsul tau a fost trimis cu succes.",
+        title: "Task submitted",
+        message: "Your response was submitted successfully.",
       });
     } catch (error) {
       notifications.show({
         color: "red",
-        title: "Eroare",
-        message: error instanceof Error ? error.message : "Trimiterea task-ului a esuat.",
+        title: "Something went wrong",
+        message: error instanceof Error ? error.message : "The task could not be submitted.",
       });
     } finally {
       setLoading(false);

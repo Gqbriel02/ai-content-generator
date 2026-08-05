@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       (messages): messages is string[] => Array.isArray(messages) && messages.length > 0,
     )?.[0];
 
-    return fail(firstFieldError ?? "Date invalide pentru inregistrare.", 400, flatten);
+    return fail(firstFieldError ?? "Invalid account details.", 400, flatten);
   }
 
   const { email, password, displayName } = parsed.data;
@@ -24,11 +24,11 @@ export async function POST(request: Request) {
     existing = await findProfileByEmail(email);
   } catch (error) {
     console.error("Profile lookup failed during registration.", error);
-    return fail("Serviciul de autentificare nu este disponibil momentan.", 503);
+    return fail("The authentication service is temporarily unavailable. Please try again.", 503);
   }
 
   if (existing) {
-    return fail("Email deja folosit.", 409);
+    return fail("An account with this email already exists.", 409);
   }
 
   const passwordHash = await hashPassword(password);

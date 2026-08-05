@@ -81,12 +81,12 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
   const body = await request.json();
   const parsed = createMessageSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("Mesaj invalid.", 400, parsed.error.flatten());
+    return fail("Invalid message.", 400, parsed.error.flatten());
   }
 
   const limiterKey = `chat:${auth.session.profileId}`;
   if (hitRateLimit(limiterKey, 40)) {
-    return fail("Ai atins limita de cereri pe minut.", 429);
+    return fail("You have reached the request limit. Please try again in one minute.", 429);
   }
 
   const userMessage = await createMessage({
@@ -104,7 +104,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
   try {
     if (parsed.data.mode === "task") {
       structuredPayload = await generateStructuredTask(messagesForModel);
-      assistantText = "Am generat un card de task. Completeaza campurile si trimite raspunsul.";
+      assistantText = "A task card has been generated. Complete the fields and submit your response.";
     } else {
       assistantText = await generateAssistantReply(messagesForModel);
     }
@@ -112,7 +112,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
     if (error instanceof LmStudioError) {
       return fail(error.message, error.status);
     }
-    return fail("Eroare la generarea raspunsului AI.", 500);
+    return fail("The AI response could not be generated. Please try again.", 500);
   }
 
   const assistantMessage = await createMessage({

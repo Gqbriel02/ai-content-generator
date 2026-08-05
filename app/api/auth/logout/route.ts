@@ -10,7 +10,7 @@ export async function POST() {
     }
   } catch (error) {
     console.error("Session revocation failed during logout.", error);
-    return fail("Deconectarea nu a putut revoca sesiunea pe server.", 503);
+    return fail("The server session could not be revoked during sign out. Please try again.", 503);
   } finally {
     await clearAuthCookie();
   }

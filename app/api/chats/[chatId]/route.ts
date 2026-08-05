@@ -16,7 +16,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/chats/[chat
     .eq("profile_id", auth.session.profileId)
     .single();
 
-  if (error) return fail("Chatul nu a fost gasit.", 404);
+  if (error) return fail("Chat not found.", 404);
   return ok(data);
 }
 
@@ -27,7 +27,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/chats/[cha
   const body = await request.json();
   const parsed = updateChatSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("Date invalide.", 400, parsed.error.flatten());
+    return fail("Invalid chat details.", 400, parsed.error.flatten());
   }
 
   const supabase = createServerSupabaseClient();
@@ -42,7 +42,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/chats/[cha
     .select("*")
     .single();
 
-  if (error) return fail("Nu s-a putut actualiza chatul.", 500, error.message);
+  if (error) return fail("The chat could not be updated.", 500, error.message);
   return ok(data);
 }
 
@@ -58,6 +58,6 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/chats/[c
     .eq("id", chatId)
     .eq("profile_id", auth.session.profileId);
 
-  if (error) return fail("Nu s-a putut sterge chatul.", 500, error.message);
+  if (error) return fail("The chat could not be deleted.", 500, error.message);
   return ok({ deleted: true });
 }

@@ -11,12 +11,12 @@ export async function POST(request: Request) {
   const body = await request.json();
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("Date invalide pentru login.", 400, parsed.error.flatten());
+    return fail("Invalid sign-in details.", 400, parsed.error.flatten());
   }
 
   const limiterKey = `login:${parsed.data.email.toLowerCase()}`;
   if (hitRateLimit(limiterKey, 12)) {
-    return fail("Prea multe incercari. Incearca din nou intr-un minut.", 429);
+    return fail("Too many sign-in attempts. Please try again in one minute.", 429);
   }
 
   let profile;
@@ -24,16 +24,16 @@ export async function POST(request: Request) {
     profile = await findProfileByEmail(parsed.data.email);
   } catch (error) {
     console.error("Profile lookup failed during login.", error);
-    return fail("Serviciul de autentificare nu este disponibil momentan.", 503);
+    return fail("The authentication service is temporarily unavailable. Please try again.", 503);
   }
 
   if (!profile) {
-    return fail("Credentiale invalide.", 401);
+    return fail("Invalid email or password.", 401);
   }
 
   const isValid = await verifyPassword(parsed.data.password, profile.password_hash);
   if (!isValid) {
-    return fail("Credentiale invalide.", 401);
+    return fail("Invalid email or password.", 401);
   }
 
   const tokenJti = randomUUID();

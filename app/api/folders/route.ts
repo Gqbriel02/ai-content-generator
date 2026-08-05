@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return fail("Nu s-a putut crea folderul.", 500, error.message);
+    return fail("The folder could not be created.", 500, error.message);
   }
   return ok(data, { status: 201 });
 }

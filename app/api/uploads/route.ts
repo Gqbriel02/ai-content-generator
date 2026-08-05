@@ -14,15 +14,15 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get("file");
   if (!(file instanceof File)) {
-    return fail("Fisier lipsa.", 400);
+    return fail("No file was provided.", 400);
   }
 
   if (!ACCEPTED_MIME.has(file.type)) {
-    return fail("Tip de fisier neacceptat.", 400);
+    return fail("This file type is not supported.", 400);
   }
 
   if (file.size > MAX_FILE_BYTES) {
-    return fail("Fisierul depaseste 8MB.", 400);
+    return fail("The file exceeds the 8 MB limit.", 400);
   }
 
   const extension = file.name.includes(".") ? file.name.split(".").pop() : "bin";
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     });
 
   if (error) {
-    return fail("Upload esuat.", 500, error.message);
+    return fail("The file could not be uploaded.", 500, error.message);
   }
 
   const { data: signedUrlData } = await supabase.storage

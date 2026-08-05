@@ -12,7 +12,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/folders/[f
   const parsed = updateFolderSchema.safeParse(body);
 
   if (!parsed.success) {
-    return fail("Date invalide.", 400, parsed.error.flatten());
+    return fail("Invalid folder details.", 400, parsed.error.flatten());
   }
 
   const supabase = createServerSupabaseClient();
@@ -24,7 +24,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/folders/[f
     .select("*")
     .single();
 
-  if (error) return fail("Nu s-a putut actualiza folderul.", 500, error.message);
+  if (error) return fail("The folder could not be updated.", 500, error.message);
   return ok(data);
 }
 
@@ -46,6 +46,6 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/folders/
     .eq("id", folderId)
     .eq("profile_id", auth.session.profileId);
 
-  if (error) return fail("Nu s-a putut sterge folderul.", 500, error.message);
+  if (error) return fail("The folder could not be deleted.", 500, error.message);
   return ok({ deleted: true });
 }

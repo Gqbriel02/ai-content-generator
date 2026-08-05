@@ -93,7 +93,7 @@ export function AuthShell({ mode }: AuthShellProps) {
       <Card shadow="lg" p="xl" withBorder radius="lg">
         <Stack gap="md">
           <Title order={2}>
-            {mode === "login" ? "Welcome back" : "Create a new account"}
+            {mode === "login" ? "Welcome back" : "Create account"}
           </Title>
           <Text c="dimmed" size="sm">
             {mode === "login"
@@ -127,14 +127,14 @@ export function AuthShell({ mode }: AuthShellProps) {
             required
           />
           <Button loading={loading} onClick={onSubmit}>
-            {mode === "login" ? "Log In" : "Register"}
+            {mode === "login" ? "Sign in" : "Create account"}
           </Button>
           <Group justify="space-between">
             <Text size="sm" c="dimmed">
               {mode === "login" ? "Don't have an account?" : "Already have an account?"}
             </Text>
             <Anchor component={Link} href={mode === "login" ? "/register" : "/login"} size="sm">
-              {mode === "login" ? "Go to Register" : "Go to Login"}
+              {mode === "login" ? "Create account" : "Sign in"}
             </Anchor>
           </Group>
         </Stack>

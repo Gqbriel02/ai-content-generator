@@ -224,7 +224,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
         }),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json?.error?.message ?? "Mesajul nu a fost trimis.");
+      if (!response.ok) throw new Error(json?.error?.message ?? "The message could not be sent.");
 
       setContent("");
       setPendingAttachments([]);
@@ -325,7 +325,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
             <Button leftSection={<IconMessagePlus size={16} />} onClick={createChat}>
               New Chat
             </Button>
-            <ActionIcon variant="subtle" onClick={logout} aria-label="logout">
+            <ActionIcon variant="subtle" onClick={logout} aria-label="Sign out">
               <IconLogout size={18} />
             </ActionIcon>
           </Group>
@@ -484,14 +484,14 @@ export function ChatShell({ chatId }: ChatShellProps) {
                         />
                       ) : (
                         <Badge variant="light" leftSection={<IconPhoto size={12} />}>
-                          imagine atasata
+                          Image attached
                         </Badge>
                       )}
                       <ActionIcon
                         color="red"
                         variant="filled"
                         size="sm"
-                        aria-label="Sterge imagine"
+                        aria-label="Remove image"
                         style={{ position: "absolute", top: -8, right: -8 }}
                         onClick={() => removePendingAttachment(attachment.storagePath)}
                       >

@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const parsed = createChatSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("Date invalide pentru chat.", 400, parsed.error.flatten());
+    return fail("Invalid chat details.", 400, parsed.error.flatten());
   }
 
   const supabase = createServerSupabaseClient();
@@ -37,6 +37,6 @@ export async function POST(request: Request) {
     .select("*")
     .single();
 
-  if (error) return fail("Nu s-a putut crea chat-ul.", 500, error.message);
+  if (error) return fail("The chat could not be created.", 500, error.message);
   return ok(data, { status: 201 });
 }

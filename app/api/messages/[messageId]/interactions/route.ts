@@ -16,7 +16,7 @@ export async function POST(
   const body = await request.json();
   const parsed = submitTaskAnswerSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("Date invalide pentru raspunsul task-ului.", 400, parsed.error.flatten());
+    return fail("Invalid task response.", 400, parsed.error.flatten());
   }
 
   const supabase = createServerSupabaseClient();
@@ -27,7 +27,7 @@ export async function POST(
     .single();
 
   if (sourceMessageError || !sourceMessage) {
-    return fail("Mesajul sursa nu exista.", 404);
+    return fail("The source message was not found.", 404);
   }
 
   const { data: chat, error: chatError } = await supabase
@@ -37,7 +37,7 @@ export async function POST(
     .single();
 
   if (chatError || !chat || chat.profile_id !== auth.session.profileId) {
-    return fail("Nu ai acces la acest mesaj.", 403);
+    return fail("You do not have access to this message.", 403);
   }
 
   const answerText = `Task answer: ${JSON.stringify(parsed.data.values)}`;
@@ -68,7 +68,7 @@ export async function POST(
     if (error instanceof LmStudioError) {
       return fail(error.message, error.status);
     }
-    return fail("Eroare la generarea raspunsului AI.", 500);
+    return fail("The AI response could not be generated. Please try again.", 500);
   }
 
   const assistant = await createMessage({
