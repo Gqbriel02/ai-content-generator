@@ -1,16 +1,16 @@
 import { requireSession } from "@/lib/auth/require-session";
 import {
-  addAttachments,
-  createMessage,
+  findChatById,
   getChatById,
   listMessages,
+  persistChatExchange,
 } from "@/lib/db/chat-repo";
-import { createServerSupabaseClient } from "@/lib/db/supabase";
 import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
 import { createMessageSchema } from "@/lib/validation/chat";
-import { createAttachmentDataUrl, createSignedReadUrl } from "@/lib/storage/attachments";
+import { createSignedReadUrl } from "@/lib/storage/attachments";
 import { generateAssistantReply, generateStructuredTask, LmStudioError } from "@/lib/ai/lmstudio";
+import { z } from "zod";
 
 type MappedMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -29,17 +29,10 @@ async function mapConversationForModel(chatId: string, systemPrompt: string): Pr
   ];
 
   for (const message of dbMessages) {
-    const attachments = await Promise.all(
-      (message.message_attachments ?? []).map(async (attachment: { storage_path: string; mime_type: string }) => ({
-        dataUrl: await createAttachmentDataUrl(attachment.storage_path, attachment.mime_type),
-        mimeType: attachment.mime_type,
-      })),
-    );
-
     output.push({
       role: message.role,
       contentText: message.content_text ?? "",
-      attachments,
+      attachments: [],
     });
   }
 
@@ -76,12 +69,37 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
   const auth = await requireSession();
   if ("error" in auth) return auth.error;
   const { chatId } = await ctx.params;
-  const chat = await getChatById(auth.session.profileId, chatId);
 
-  const body = await request.json();
+  if (!z.string().uuid().safeParse(chatId).success) {
+    return fail("Invalid chat identifier.", 400);
+  }
+
+  let chat;
+  try {
+    chat = await findChatById(auth.session.profileId, chatId);
+  } catch (error) {
+    console.error("Unable to verify chat ownership.", error);
+    return fail("The chat could not be loaded. Please try again.", 500);
+  }
+
+  if (!chat) {
+    return fail("Chat not found.", 404);
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return fail("The request body must contain valid JSON.", 400);
+  }
+
   const parsed = createMessageSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("Invalid message.", 400, parsed.error.flatten());
+    return fail("Enter a non-empty message of no more than 12,000 characters.", 400, parsed.error.flatten());
+  }
+
+  if (parsed.data.attachments.length > 0) {
+    return fail("Attachments are not supported for text generation.", 400);
   }
 
   const limiterKey = `chat:${auth.session.profileId}`;
@@ -89,15 +107,20 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
     return fail("You have reached the request limit. Please try again in one minute.", 429);
   }
 
-  const userMessage = await createMessage({
-    chatId,
+  let messagesForModel: MappedMessage[];
+  try {
+    messagesForModel = await mapConversationForModel(chatId, chat.system_prompt ?? "");
+  } catch (error) {
+    console.error("Unable to load conversation context.", error);
+    return fail("The conversation could not be loaded. Please try again.", 500);
+  }
+
+  messagesForModel.push({
     role: "user",
     contentText: parsed.data.content,
+    attachments: [],
   });
 
-  await addAttachments(userMessage.id, parsed.data.attachments);
-
-  const messagesForModel = await mapConversationForModel(chatId, chat.system_prompt ?? "");
   let assistantText = "";
   let structuredPayload: unknown = null;
 
@@ -115,18 +138,22 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
     return fail("The AI response could not be generated. Please try again.", 500);
   }
 
-  const assistantMessage = await createMessage({
-    chatId,
-    role: "assistant",
-    contentText: assistantText,
-    structuredPayload,
-  });
-
-  const supabase = createServerSupabaseClient();
-  await supabase.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId);
+  let exchange;
+  try {
+    exchange = await persistChatExchange({
+      chatId,
+      profileId: auth.session.profileId,
+      userContent: parsed.data.content,
+      assistantContent: assistantText,
+      assistantPayload: structuredPayload,
+    });
+  } catch (error) {
+    console.error("Unable to persist generated exchange.", error);
+    return fail("The generated response could not be saved. Please try again.", 500);
+  }
 
   return ok({
-    userMessage,
-    assistantMessage,
+    userMessage: exchange.userMessage,
+    assistantMessage: exchange.assistantMessage,
   });
 }

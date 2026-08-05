@@ -37,6 +37,19 @@ export async function getChatById(profileId: string, chatId: string) {
   return data;
 }
 
+export async function findChatById(profileId: string, chatId: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("chats")
+    .select("*")
+    .eq("id", chatId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function listMessages(chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -67,6 +80,46 @@ export async function createMessage(input: {
     .single();
   if (error) throw error;
   return data;
+}
+
+type PersistedMessage = {
+  id: string;
+  chat_id: string;
+  role: "user" | "assistant";
+  content_text: string;
+  structured_payload: unknown;
+  created_at: string;
+};
+
+export async function persistChatExchange(input: {
+  chatId: string;
+  profileId: string;
+  userContent: string;
+  assistantContent: string;
+  assistantPayload?: unknown;
+}) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("persist_chat_exchange", {
+    p_chat_id: input.chatId,
+    p_profile_id: input.profileId,
+    p_user_content: input.userContent,
+    p_assistant_content: input.assistantContent,
+    p_assistant_payload: input.assistantPayload ?? null,
+  });
+
+  if (error) throw error;
+
+  const result = data as
+    | { userMessage?: PersistedMessage; assistantMessage?: PersistedMessage }
+    | null;
+  if (!result?.userMessage || !result.assistantMessage) {
+    throw new Error("The persisted exchange was not returned by the database.");
+  }
+
+  return {
+    userMessage: result.userMessage,
+    assistantMessage: result.assistantMessage,
+  };
 }
 
 export async function addAttachments(messageId: string, attachments: AttachmentInput[]) {

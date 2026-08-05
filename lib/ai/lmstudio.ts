@@ -6,6 +6,7 @@ import type {
 import { env } from "@/lib/config/env";
 import type { Role, TaskCardPayload } from "@/types/domain";
 import { taskCardJsonSchema } from "@/lib/ai/schemas";
+import { normalizeAssistantText } from "@/lib/ai/response";
 
 const primaryClient = new OpenAI({
   baseURL: env.LM_STUDIO_BASE_URL,
@@ -111,18 +112,22 @@ async function withLmStudioFallback<T>(run: (client: OpenAI) => Promise<T>) {
 
 function mapLmStudioError(error: unknown) {
   const fallback =
-    "LM Studio is not responding. Check if the local server is running (lms server start) and if the model is loaded.";
+    "Unable to connect to the local AI model. Check that LM Studio is running and the model is loaded.";
 
   if (error instanceof LmStudioError) {
     return error;
   }
 
   if (error instanceof Error) {
+    if (error instanceof OpenAI.APIConnectionTimeoutError) {
+      return new LmStudioError("The local AI model timed out. Please try again.", 504);
+    }
+
     if (isConnectivityError(error)) {
       return new LmStudioError(fallback, 503);
     }
 
-    return new LmStudioError(`Error LM Studio: ${error.message}`, 502);
+    return new LmStudioError("The local AI model returned an error. Please try again.", 502);
   }
 
   return new LmStudioError(fallback, 503);
@@ -138,7 +143,12 @@ export async function generateAssistantReply(messages: LmMessage[]) {
       }),
     );
 
-    return completion.choices[0]?.message?.content ?? "";
+    const content = normalizeAssistantText(completion.choices[0]?.message?.content);
+    if (!content) {
+      throw new LmStudioError("The local AI model returned an empty response. Please try again.", 502);
+    }
+
+    return content;
   } catch (error) {
     throw mapLmStudioError(error);
   }
