@@ -1,13 +1,19 @@
 import { clearAuthCookie, getSessionFromCookie } from "@/lib/auth/session";
 import { revokeAuthSession } from "@/lib/db/auth-repo";
-import { ok } from "@/lib/http/responses";
+import { fail, ok } from "@/lib/http/responses";
 
 export async function POST() {
-  const session = await getSessionFromCookie();
-  if (session) {
-    await revokeAuthSession(session.tokenJti);
+  try {
+    const session = await getSessionFromCookie();
+    if (session) {
+      await revokeAuthSession(session.tokenJti);
+    }
+  } catch (error) {
+    console.error("Session revocation failed during logout.", error);
+    return fail("Deconectarea nu a putut revoca sesiunea pe server.", 503);
+  } finally {
+    await clearAuthCookie();
   }
 
-  await clearAuthCookie();
   return ok({ success: true });
 }

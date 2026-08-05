@@ -22,5 +22,18 @@ export async function signSession(payload: SessionPayload) {
 
 export async function verifySessionToken(token: string) {
   const { payload } = await jwtVerify<SessionPayload>(token, secret);
-  return payload;
+
+  if (
+    typeof payload.sub !== "string" ||
+    typeof payload.email !== "string" ||
+    typeof payload.jti !== "string"
+  ) {
+    throw new Error("Invalid session token claims.");
+  }
+
+  return {
+    sub: payload.sub,
+    email: payload.email,
+    jti: payload.jti,
+  };
 }

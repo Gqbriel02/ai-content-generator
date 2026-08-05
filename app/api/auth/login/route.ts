@@ -19,7 +19,14 @@ export async function POST(request: Request) {
     return fail("Prea multe incercari. Incearca din nou intr-un minut.", 429);
   }
 
-  const profile = await findProfileByEmail(parsed.data.email);
+  let profile;
+  try {
+    profile = await findProfileByEmail(parsed.data.email);
+  } catch (error) {
+    console.error("Profile lookup failed during login.", error);
+    return fail("Serviciul de autentificare nu este disponibil momentan.", 503);
+  }
+
   if (!profile) {
     return fail("Credentiale invalide.", 401);
   }

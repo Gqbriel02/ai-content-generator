@@ -19,7 +19,14 @@ export async function POST(request: Request) {
   }
 
   const { email, password, displayName } = parsed.data;
-  const existing = await findProfileByEmail(email);
+  let existing;
+  try {
+    existing = await findProfileByEmail(email);
+  } catch (error) {
+    console.error("Profile lookup failed during registration.", error);
+    return fail("Serviciul de autentificare nu este disponibil momentan.", 503);
+  }
+
   if (existing) {
     return fail("Email deja folosit.", 409);
   }

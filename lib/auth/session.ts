@@ -21,39 +21,40 @@ export async function clearAuthCookie() {
   cookieStore.delete(AUTH_COOKIE_NAME);
 }
 
-export async function getSessionFromCookie() {
-  const cookieStore = await cookies();
-  const rawToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
-
-  if (!rawToken) {
-    return null;
-  }
-
+export async function getSessionFromToken(rawToken: string) {
+  let payload;
   try {
-    const payload = await verifySessionToken(rawToken);
-    const supabase = createServerSupabaseClient();
-    const { data } = await supabase
-      .from("auth_sessions")
-      .select("profile_id, revoked_at, expires_at")
-      .eq("token_jti", payload.jti)
-      .is("revoked_at", null)
-      .maybeSingle();
-
-    if (!data) {
-      return null;
-    }
-
-    const expired = new Date(data.expires_at).getTime() < Date.now();
-    if (expired) {
-      return null;
-    }
-
-    return {
-      profileId: payload.sub,
-      email: payload.email,
-      tokenJti: payload.jti,
-    };
+    payload = await verifySessionToken(rawToken);
   } catch {
     return null;
   }
+
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("auth_sessions")
+    .select("profile_id, revoked_at, expires_at")
+    .eq("token_jti", payload.jti)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data || data.revoked_at !== null || data.profile_id !== payload.sub) {
+    return null;
+  }
+
+  const expiresAt = Date.parse(data.expires_at);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    return null;
+  }
+
+  return {
+    profileId: data.profile_id,
+    email: payload.email,
+    tokenJti: payload.jti,
+  };
+}
+
+export async function getSessionFromCookie() {
+  const cookieStore = await cookies();
+  const rawToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+  return rawToken ? getSessionFromToken(rawToken) : null;
 }

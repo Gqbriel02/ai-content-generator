@@ -2,11 +2,13 @@ import { createServerSupabaseClient } from "@/lib/db/supabase";
 
 export async function findProfileByEmail(email: string) {
   const supabase = createServerSupabaseClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("profiles")
     .select("id, email, password_hash, display_name")
     .eq("email", email.toLowerCase())
     .maybeSingle();
+
+  if (error) throw error;
   return data;
 }
 
@@ -46,9 +48,11 @@ export async function createAuthSession(input: {
 
 export async function revokeAuthSession(tokenJti: string) {
   const supabase = createServerSupabaseClient();
-  await supabase
+  const { error } = await supabase
     .from("auth_sessions")
     .update({ revoked_at: new Date().toISOString() })
     .eq("token_jti", tokenJti)
     .is("revoked_at", null);
+
+  if (error) throw error;
 }
