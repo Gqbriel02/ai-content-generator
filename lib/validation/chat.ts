@@ -36,5 +36,5 @@ export const createMessageSchema = z.object({
 });
 
 export const submitTaskAnswerSchema = z.object({
-  values: z.record(z.union([z.string(), z.array(z.string())])),
+  values: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
 });

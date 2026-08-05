@@ -1,4 +1,8 @@
 import OpenAI from "openai";
+import type {
+  ChatCompletionContentPart,
+  ChatCompletionMessageParam,
+} from "openai/resources/chat/completions";
 import { env } from "@/lib/config/env";
 import type { Role, TaskCardPayload } from "@/types/domain";
 import { taskCardJsonSchema } from "@/lib/ai/schemas";
@@ -35,25 +39,49 @@ export class LmStudioError extends Error {
   }
 }
 
-function mapMessages(messages: LmMessage[]) {
+function mapMessages(messages: LmMessage[]): ChatCompletionMessageParam[] {
   return messages.map((message) => {
-    if (!message.attachments?.length) {
+    if (message.role === "system") {
       return {
-        role: message.role,
+        role: "system",
         content: message.contentText,
       };
     }
 
-    const imageParts = message.attachments.map((attachment) => ({
-      type: "image_url" as const,
-      image_url: {
-        url: attachment.dataUrl,
-      },
-    }));
+    if (message.role === "assistant") {
+      return {
+        role: "assistant",
+        content: message.contentText,
+      };
+    }
+
+    if (message.role === "tool") {
+      return {
+        role: "user",
+        content: message.contentText,
+      };
+    }
+
+    if (!message.attachments?.length) {
+      return {
+        role: "user",
+        content: message.contentText,
+      };
+    }
+
+    const content: ChatCompletionContentPart[] = [
+      { type: "text", text: message.contentText },
+      ...message.attachments.map((attachment) => ({
+        type: "image_url" as const,
+        image_url: {
+          url: attachment.dataUrl,
+        },
+      })),
+    ];
 
     return {
-      role: message.role,
-      content: [{ type: "text" as const, text: message.contentText }, ...imageParts],
+      role: "user",
+      content,
     };
   });
 }
