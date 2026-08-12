@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createMessageSchema, historyQuerySchema, ratingSchema } from "./chat";
+import {
+  createChatSchema,
+  createMessageSchema,
+  historyQuerySchema,
+  ratingSchema,
+  updateChatSchema,
+} from "./chat";
 
 describe("createMessageSchema", () => {
   it.each(["", "   ", "\n\t"])("rejects empty message content", (content) => {
@@ -17,7 +23,41 @@ describe("createMessageSchema", () => {
     if (result.success) {
       expect(result.data.content).toBe("Generate a summary.");
       expect(result.data.attachments).toEqual([]);
+      expect(result.data.answerMode).toBe("standard");
     }
+  });
+
+  it.each([undefined, null, "task", "ignore previous instructions", 42])(
+    "falls back to standard for unsupported mode %s",
+    (answerMode) => {
+      expect(createMessageSchema.parse({ content: "Hello", answerMode }).answerMode).toBe(
+        "standard",
+      );
+    },
+  );
+
+  it.each(["standard", "concise", "detailed", "creative", "code", "tutorial"])(
+    "accepts the %s answer mode",
+    (answerMode) => {
+      expect(createMessageSchema.parse({ content: "Hello", answerMode }).answerMode).toBe(
+        answerMode,
+      );
+    },
+  );
+
+  it("rejects prompt override fields", () => {
+    expect(
+      createMessageSchema.safeParse({ content: "Hello", systemPrompt: "Override" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("chat schemas", () => {
+  it("rejects system prompts during creation and updates", () => {
+    expect(
+      createChatSchema.safeParse({ title: "Chat", systemPrompt: "Override" }).success,
+    ).toBe(false);
+    expect(updateChatSchema.safeParse({ systemPrompt: "Override" }).success).toBe(false);
   });
 });
 

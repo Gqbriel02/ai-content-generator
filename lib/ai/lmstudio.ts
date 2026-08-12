@@ -4,9 +4,10 @@ import type {
   ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
 import { env } from "@/lib/config/env";
-import type { Role, TaskCardPayload } from "@/types/domain";
-import { taskCardJsonSchema } from "@/lib/ai/schemas";
+import type { Role } from "@/types/domain";
 import { normalizeAssistantText } from "@/lib/ai/response";
+import type { AnswerMode } from "@/lib/ai/answer-modes";
+import { getSystemPrompt } from "@/lib/ai/prompts";
 
 const primaryClient = new OpenAI({
   baseURL: env.LM_STUDIO_BASE_URL,
@@ -133,12 +134,15 @@ function mapLmStudioError(error: unknown) {
   return new LmStudioError(fallback, 503);
 }
 
-export async function generateAssistantReply(messages: LmMessage[]) {
+export async function generateAssistantReply(messages: LmMessage[], answerMode: AnswerMode) {
   try {
     const completion = await withLmStudioFallback((client) =>
       client.chat.completions.create({
         model: env.LM_STUDIO_MODEL,
-        messages: mapMessages(messages),
+        messages: [
+          { role: "system", content: getSystemPrompt(answerMode) },
+          ...mapMessages(messages.filter((message) => message.role !== "system")),
+        ],
         temperature: 0.35,
       }),
     );
@@ -149,34 +153,6 @@ export async function generateAssistantReply(messages: LmMessage[]) {
     }
 
     return content;
-  } catch (error) {
-    throw mapLmStudioError(error);
-  }
-}
-
-export async function generateStructuredTask(messages: LmMessage[]) {
-  try {
-    const completion = await withLmStudioFallback((client) =>
-      client.chat.completions.create({
-        model: env.LM_STUDIO_MODEL,
-        messages: [
-          ...mapMessages(messages),
-          {
-            role: "system",
-            content:
-              "Return a practical, concise task form based on the latest user request. Do not include explanations outside the JSON object.",
-          },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: taskCardJsonSchema,
-        },
-        temperature: 0.2,
-      }),
-    );
-
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    return JSON.parse(raw) as TaskCardPayload;
   } catch (error) {
     throw mapLmStudioError(error);
   }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_ANSWER_MODE, isAnswerMode } from "../ai/answer-modes";
 
 export const createFolderSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -12,14 +13,12 @@ export const updateFolderSchema = z.object({
 export const createChatSchema = z.object({
   title: z.string().trim().min(1).max(120),
   folderId: z.string().uuid().nullable().optional(),
-  systemPrompt: z.string().max(4000).optional(),
-});
+}).strict();
 
 export const updateChatSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
   folderId: z.string().uuid().nullable().optional(),
-  systemPrompt: z.string().max(4000).optional(),
-});
+}).strict();
 
 export const HISTORY_SEARCH_MAX_LENGTH = 200;
 
@@ -42,10 +41,9 @@ export const attachmentInputSchema = z.object({
 
 export const createMessageSchema = z.object({
   content: z.string().trim().min(1).max(12000),
-  mode: z.enum(["chat", "task"]).default("chat"),
+  answerMode: z.preprocess(
+    (value) => (isAnswerMode(value) ? value : DEFAULT_ANSWER_MODE),
+    z.enum(["standard", "concise", "detailed", "creative", "code", "tutorial"]),
+  ),
   attachments: z.array(attachmentInputSchema).max(8).default([]),
-});
-
-export const submitTaskAnswerSchema = z.object({
-  values: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
-});
+}).strict();

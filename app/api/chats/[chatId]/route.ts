@@ -11,7 +11,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/chats/[chat
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("chats")
-    .select("*")
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
     .eq("id", chatId)
     .eq("profile_id", auth.session.profileId)
     .single();
@@ -41,12 +41,11 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/chats/[cha
     .update({
       ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
       ...(parsed.data.folderId !== undefined ? { folder_id: parsed.data.folderId } : {}),
-      ...(parsed.data.systemPrompt !== undefined ? { system_prompt: parsed.data.systemPrompt } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", chatId)
     .eq("profile_id", auth.session.profileId)
-    .select("*")
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
     .single();
 
   if (error) return fail("The chat could not be updated.", 500, error.message);

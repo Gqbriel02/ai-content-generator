@@ -44,12 +44,9 @@ export async function POST(request: Request) {
       profile_id: auth.session.profileId,
       folder_id: parsed.data.folderId ?? null,
       title: parsed.data.title,
-      system_prompt:
-        parsed.data.systemPrompt ??
-        "You are a practical and concise AI assistant. Keep answers structured and actionable.",
       model_name: process.env.LM_STUDIO_MODEL ?? "local-model",
     })
-    .select("*")
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
     .single();
 
   if (error) return fail("The chat could not be created.", 500, error.message);

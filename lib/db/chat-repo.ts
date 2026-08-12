@@ -66,7 +66,7 @@ export async function listChats(
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("chats")
-    .select("*, messages(content_text)")
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at, messages(content_text)")
     .eq("profile_id", profileId);
   if (error) throw error;
   return filterAndSortChats(
@@ -94,7 +94,7 @@ export async function getChatById(profileId: string, chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("chats")
-    .select("*")
+    .select("id")
     .eq("id", chatId)
     .eq("profile_id", profileId)
     .single();
@@ -107,7 +107,7 @@ export async function findChatById(profileId: string, chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("chats")
-    .select("*")
+    .select("id")
     .eq("id", chatId)
     .eq("profile_id", profileId)
     .maybeSingle();

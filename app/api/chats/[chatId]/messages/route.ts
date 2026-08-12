@@ -9,7 +9,7 @@ import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
 import { createMessageSchema } from "@/lib/validation/chat";
 import { createSignedReadUrl } from "@/lib/storage/attachments";
-import { generateAssistantReply, generateStructuredTask, LmStudioError } from "@/lib/ai/lmstudio";
+import { generateAssistantReply, LmStudioError } from "@/lib/ai/lmstudio";
 import { z } from "zod";
 
 type MappedMessage = {
@@ -18,17 +18,12 @@ type MappedMessage = {
   attachments: { dataUrl: string; mimeType: string }[];
 };
 
-async function mapConversationForModel(chatId: string, systemPrompt: string): Promise<MappedMessage[]> {
+async function mapConversationForModel(chatId: string): Promise<MappedMessage[]> {
   const dbMessages = await listMessages(chatId);
-  const output: MappedMessage[] = [
-    {
-      role: "system",
-      contentText: systemPrompt,
-      attachments: [],
-    },
-  ];
+  const output: MappedMessage[] = [];
 
   for (const message of dbMessages) {
+    if (message.role === "system") continue;
     output.push({
       role: message.role,
       contentText: message.content_text ?? "",
@@ -109,7 +104,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
 
   let messagesForModel: MappedMessage[];
   try {
-    messagesForModel = await mapConversationForModel(chatId, chat.system_prompt ?? "");
+    messagesForModel = await mapConversationForModel(chatId);
   } catch (error) {
     console.error("Unable to load conversation context.", error);
     return fail("The conversation could not be loaded. Please try again.", 500);
@@ -122,15 +117,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
   });
 
   let assistantText = "";
-  let structuredPayload: unknown = null;
-
   try {
-    if (parsed.data.mode === "task") {
-      structuredPayload = await generateStructuredTask(messagesForModel);
-      assistantText = "A task card has been generated. Complete the fields and submit your response.";
-    } else {
-      assistantText = await generateAssistantReply(messagesForModel);
-    }
+    assistantText = await generateAssistantReply(messagesForModel, parsed.data.answerMode);
   } catch (error) {
     if (error instanceof LmStudioError) {
       return fail(error.message, error.status);
@@ -145,7 +133,6 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
       profileId: auth.session.profileId,
       userContent: parsed.data.content,
       assistantContent: assistantText,
-      assistantPayload: structuredPayload,
     });
   } catch (error) {
     console.error("Unable to persist generated exchange.", error);

@@ -25,7 +25,6 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
-  IconCheckbox,
   IconFolderPlus,
   IconLogout,
   IconMessagePlus,
@@ -39,8 +38,12 @@ import {
 import { notifications } from "@mantine/notifications";
 import { marked } from "marked";
 import DOMPurify from "isomorphic-dompurify";
-import { TaskCard } from "@/components/chat/task-card";
-import type { TaskCardPayload } from "@/types/domain";
+import {
+  ANSWER_MODES,
+  DEFAULT_ANSWER_MODE,
+  isAnswerMode,
+  type AnswerMode,
+} from "@/lib/ai/answer-modes";
 
 type Folder = {
   id: string;
@@ -51,7 +54,6 @@ type Chat = {
   id: string;
   title: string;
   folder_id: string | null;
-  system_prompt: string | null;
   rating: 1 | -1 | null;
 };
 
@@ -59,7 +61,6 @@ type Message = {
   id: string;
   role: "system" | "user" | "assistant" | "tool";
   content_text: string;
-  structured_payload: TaskCardPayload | null;
   attachments?: { signedUrl: string; mimeType: string; storagePath: string }[];
 };
 
@@ -89,8 +90,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [content, setContent] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [activeMode, setActiveMode] = useState<"chat" | "task">("chat");
+  const [answerMode, setAnswerMode] = useState<AnswerMode>(DEFAULT_ANSWER_MODE);
   const [navbarOpened, { toggle: toggleNavbar, close: closeNavbar }] = useDisclosure(false);
   const [asideOpened, { toggle: toggleAside }] = useDisclosure(false);
   const [pendingAttachments, setPendingAttachments] = useState<
@@ -137,7 +137,6 @@ export function ChatShell({ chatId }: ChatShellProps) {
       throw new Error(messageJson?.error?.message ?? "Failed to load messages.");
     }
     setMessages(messageJson.data);
-    setSystemPrompt(chatJson.data.system_prompt ?? "");
     setRating(chatJson.data.rating ?? null);
   }
 
@@ -166,7 +165,6 @@ export function ChatShell({ chatId }: ChatShellProps) {
       if (!activeChatId) {
         if (!cancelled) {
           setMessages([]);
-          setSystemPrompt("");
           setRating(null);
         }
         return;
@@ -293,7 +291,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content,
-          mode: activeMode,
+          answerMode,
           attachments: pendingAttachments.map((item) => ({
             storagePath: item.storagePath,
             mimeType: item.mimeType,
@@ -322,21 +320,6 @@ export function ChatShell({ chatId }: ChatShellProps) {
     setPendingAttachments((previous) =>
       previous.filter((attachment) => attachment.storagePath !== storagePath),
     );
-  }
-
-  async function saveSystemPrompt() {
-    if (!activeChatId) return;
-    const response = await fetch(`/api/chats/${activeChatId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemPrompt,
-      }),
-    });
-    if (response.ok) {
-      notifications.show({ color: "green", title: "Saved", message: "System prompt updated." });
-      fetchBootstrap();
-    }
   }
 
   async function logout() {
@@ -500,29 +483,22 @@ export function ChatShell({ chatId }: ChatShellProps) {
 
       <AppShell.Aside p="sm">
         <Stack gap="sm">
-          <Text fw={600}>System Prompt</Text>
-          <Textarea
-            minRows={10}
-            value={systemPrompt}
-            onChange={(event) => setSystemPrompt(event.currentTarget.value)}
-            placeholder="Define the assistant's behavior."
-          />
-          <Button variant="light" onClick={saveSystemPrompt} disabled={!activeChatId}>
-            Save
-          </Button>
-          <Text fw={600} mt="sm">
-            Answer Mode
-          </Text>
+          <Text fw={600}>Answer Mode</Text>
           <Select
-            data={[
-              { value: "chat", label: "Conversational" },
-              { value: "task", label: "Task card (checkbox/radio/select)" },
-            ]}
-            value={activeMode}
-            onChange={(value) => setActiveMode((value as "chat" | "task") ?? "chat")}
+            aria-label="Answer mode"
+            data={Object.entries(ANSWER_MODES).map(([value, mode]) => ({
+              value,
+              label: mode.label,
+            }))}
+            value={answerMode}
+            onChange={(value) => setAnswerMode(isAnswerMode(value) ? value : DEFAULT_ANSWER_MODE)}
+            allowDeselect={false}
           />
-          <Text size="xs" c="dimmed">
-            Task mode uses structured JSON schema output.
+          <Text size="sm" fw={500}>
+            {ANSWER_MODES[answerMode].label}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {ANSWER_MODES[answerMode].description}
           </Text>
         </Stack>
       </AppShell.Aside>
@@ -564,18 +540,6 @@ export function ChatShell({ chatId }: ChatShellProps) {
                           />
                         ))}
                       </Group>
-                    ) : null}
-                    {message.structured_payload ? (
-                      <Box mt="sm">
-                        <TaskCard
-                          messageId={message.id}
-                          payload={message.structured_payload}
-                          onSubmitted={async () => {
-                            if (!activeChatId) return;
-                            await fetchMessages(activeChatId);
-                          }}
-                        />
-                      </Box>
                     ) : null}
                   </Box>
                 ))}
@@ -657,14 +621,6 @@ export function ChatShell({ chatId }: ChatShellProps) {
                     </ActionIcon>
                   )}
                 </FileButton>
-                <ActionIcon
-                  variant={activeMode === "task" ? "filled" : "light"}
-                  size="lg"
-                  onClick={() => setActiveMode((prev) => (prev === "task" ? "chat" : "task"))}
-                  aria-label="toggle-task-mode"
-                >
-                  <IconCheckbox size={18} />
-                </ActionIcon>
                 <ActionIcon size="lg" onClick={sendMessage} loading={sending} aria-label="send">
                   <IconSend size={18} />
                 </ActionIcon>
