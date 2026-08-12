@@ -6,16 +6,29 @@ vi.mock("@/lib/db/supabase", () => ({
   createServerSupabaseClient: () => ({ rpc, from }),
 }));
 
-import { filterAndSortChats, listChats, persistChatExchange, updateChatRating } from "./chat-repo";
+import {
+  filterAndSortChats,
+  listChats,
+  listMessages,
+  persistChatExchange,
+  updateChatRating,
+} from "./chat-repo";
 
 describe("persistChatExchange", () => {
   beforeEach(() => {
     rpc.mockReset();
   });
 
-  it("persists and returns a complete exchange through one RPC call", async () => {
+  it.each(["detailed", "tutorial"] as const)(
+    "persists and returns a complete %s exchange through one RPC call",
+    async (assistantAnswerMode) => {
     const userMessage = { id: "user-id", role: "user", content_text: "Prompt" };
-    const assistantMessage = { id: "assistant-id", role: "assistant", content_text: "Response" };
+    const assistantMessage = {
+      id: "assistant-id",
+      role: "assistant",
+      content_text: "Response",
+      answer_mode: assistantAnswerMode,
+    };
     rpc.mockResolvedValue({ data: { userMessage, assistantMessage }, error: null });
 
     await expect(
@@ -24,6 +37,7 @@ describe("persistChatExchange", () => {
         profileId: "profile-id",
         userContent: "Prompt",
         assistantContent: "Response",
+        assistantAnswerMode,
       }),
     ).resolves.toEqual({ userMessage, assistantMessage });
 
@@ -33,9 +47,11 @@ describe("persistChatExchange", () => {
       p_profile_id: "profile-id",
       p_user_content: "Prompt",
       p_assistant_content: "Response",
+      p_assistant_answer_mode: assistantAnswerMode,
       p_assistant_payload: null,
     });
-  });
+    },
+  );
 
   it("rejects a database persistence failure", async () => {
     rpc.mockResolvedValue({ data: null, error: new Error("database unavailable") });
@@ -46,6 +62,7 @@ describe("persistChatExchange", () => {
         profileId: "profile-id",
         userContent: "Prompt",
         assistantContent: "Response",
+        assistantAnswerMode: "standard",
       }),
     ).rejects.toThrow("database unavailable");
   });
@@ -73,6 +90,28 @@ describe("chat history", () => {
     await listChats("owner-profile");
     expect(from).toHaveBeenCalledWith("chats");
     expect(eq).toHaveBeenCalledWith("profile_id", "owner-profile");
+  });
+});
+
+describe("message history", () => {
+  it("loads persisted answer modes without selecting private prompt fields", async () => {
+    const order = vi.fn().mockResolvedValue({
+      data: [{ id: "assistant-id", role: "assistant", answer_mode: "detailed" }],
+      error: null,
+    });
+    const eq = vi.fn(() => ({ order }));
+    const select = vi.fn(() => ({ eq }));
+    from.mockReturnValueOnce({ select });
+
+    await expect(listMessages("chat-id")).resolves.toEqual([
+      { id: "assistant-id", role: "assistant", answer_mode: "detailed" },
+    ]);
+
+    const selectedColumns = select.mock.calls[0]?.[0] ?? "";
+    expect(selectedColumns).toContain("answer_mode");
+    expect(selectedColumns).not.toContain("system_prompt");
+    expect(selectedColumns).not.toContain("BASE_SYSTEM_PROMPT");
+    expect(selectedColumns).not.toContain("ANSWER_MODE_PROMPTS");
   });
 });
 

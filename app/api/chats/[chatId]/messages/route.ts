@@ -133,6 +133,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
       profileId: auth.session.profileId,
       userContent: parsed.data.content,
       assistantContent: assistantText,
+      assistantAnswerMode: parsed.data.answerMode,
     });
   } catch (error) {
     console.error("Unable to persist generated exchange.", error);

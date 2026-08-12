@@ -41,6 +41,7 @@ import DOMPurify from "isomorphic-dompurify";
 import {
   ANSWER_MODES,
   DEFAULT_ANSWER_MODE,
+  getAnswerModeLabel,
   isAnswerMode,
   type AnswerMode,
 } from "@/lib/ai/answer-modes";
@@ -61,6 +62,7 @@ type Message = {
   id: string;
   role: "system" | "user" | "assistant" | "tool";
   content_text: string;
+  answer_mode?: AnswerMode | null;
   attachments?: { signedUrl: string; mimeType: string; storagePath: string }[];
 };
 
@@ -527,6 +529,11 @@ export function ChatShell({ chatId }: ChatShellProps) {
                   >
                     <Group justify="space-between" mb={8}>
                       <Badge variant="light">{message.role}</Badge>
+                      {message.role === "assistant" && getAnswerModeLabel(message.answer_mode) ? (
+                        <Badge variant="light" color="gray" radius="xl" size="sm">
+                          {getAnswerModeLabel(message.answer_mode)}
+                        </Badge>
+                      ) : null}
                     </Group>
                     <MarkdownView value={message.content_text || ""} />
                     {message.attachments?.length ? (

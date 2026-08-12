@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/db/supabase";
 import type { AttachmentInput } from "@/types/domain";
+import type { AnswerMode } from "@/lib/ai/answer-modes";
 
 export async function listFolders(profileId: string) {
   const supabase = createServerSupabaseClient();
@@ -120,7 +121,7 @@ export async function listMessages(chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("messages")
-    .select("*, message_attachments(*)")
+    .select("id, chat_id, role, content_text, structured_payload, answer_mode, created_at, message_attachments(*)")
     .eq("chat_id", chatId)
     .order("created_at", { ascending: true });
   if (error) throw error;
@@ -154,6 +155,7 @@ type PersistedMessage = {
   role: "user" | "assistant";
   content_text: string;
   structured_payload: unknown;
+  answer_mode: AnswerMode | null;
   created_at: string;
 };
 
@@ -162,6 +164,7 @@ export async function persistChatExchange(input: {
   profileId: string;
   userContent: string;
   assistantContent: string;
+  assistantAnswerMode: AnswerMode;
   assistantPayload?: unknown;
 }) {
   const supabase = createServerSupabaseClient();
@@ -170,6 +173,7 @@ export async function persistChatExchange(input: {
     p_profile_id: input.profileId,
     p_user_content: input.userContent,
     p_assistant_content: input.assistantContent,
+    p_assistant_answer_mode: input.assistantAnswerMode,
     p_assistant_payload: input.assistantPayload ?? null,
   });
 

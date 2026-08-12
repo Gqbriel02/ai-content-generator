@@ -35,3 +35,7 @@ export const DEFAULT_ANSWER_MODE: AnswerMode = "standard";
 export function isAnswerMode(value: unknown): value is AnswerMode {
   return typeof value === "string" && value in ANSWER_MODES;
 }
+
+export function getAnswerModeLabel(value: unknown) {
+  return isAnswerMode(value) ? ANSWER_MODES[value].label : null;
+}
