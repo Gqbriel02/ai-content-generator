@@ -90,6 +90,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [draftFolderId, setDraftFolderId] = useState<string | null>(null);
   const [rating, setRating] = useState<1 | -1 | null>(null);
   const [activeChatFolderId, setActiveChatFolderId] = useState<string | null>(null);
   const [ratingPending, setRatingPending] = useState(false);
@@ -253,25 +254,16 @@ export function ChatShell({ chatId }: ChatShellProps) {
     }
   }
 
-  async function createChat(folderId: string | null = null) {
-    const response = await fetch("/api/chats", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: `Chat ${new Date().toLocaleString()}`,
-        folderId,
-      }),
-    });
-    const json = await response.json();
-    if (!response.ok) {
-      notifications.show({ color: "red", title: "Chat not created", message: json?.error?.message ?? "The chat could not be created." });
-      return;
-    }
-    setChats((current) => [json.data, ...current]);
+  function createDraft(folderId: string | null = null) {
+    if (!activeChatId && draftFolderId === folderId && !messages.length) return;
+    if (pendingAttachments.length) void cleanupPendingAttachments(pendingAttachments.map((item) => item.storagePath));
+    setDraftFolderId(folderId);
     setMessages([]);
     setRating(null);
-    setActiveChatFolderId(json.data.folder_id ?? null);
-    router.push(chatHref(json.data.id));
+    setActiveChatFolderId(null);
+    setContent("");
+    setPendingAttachments([]);
+    router.push(`/chat${window.location.search}`);
   }
 
   async function deleteFolder() {
@@ -285,6 +277,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
       setFolders((current) => current.filter((item) => item.id !== folder.id));
       setChats((current) => current.filter((chat) => chat.folder_id !== folder.id));
       setFolderToDelete(null);
+      if (!activeChatId && draftFolderId === folder.id) setDraftFolderId(null);
       if (activeChatId && activeChatFolderId === folder.id) {
         setMessages([]); setRating(null); setActiveChatFolderId(null); router.push(`/chat${window.location.search}`);
       }
@@ -350,15 +343,17 @@ export function ChatShell({ chatId }: ChatShellProps) {
   }
 
   async function sendMessage() {
-    if (!activeChatId || !content.trim()) return;
+    if (!content.trim() || sending) return;
     setSending(true);
     try {
-      const response = await fetch(`/api/chats/${activeChatId}/messages`, {
+      const isInitial = !activeChatId;
+      const response = await fetch(isInitial ? "/api/chats/initial-exchange" : `/api/chats/${activeChatId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content,
           answerMode,
+          ...(isInitial ? { folderId: draftFolderId } : {}),
           attachments: pendingAttachments.map((item) => ({
             storagePath: item.storagePath,
             mimeType: item.mimeType,
@@ -371,7 +366,16 @@ export function ChatShell({ chatId }: ChatShellProps) {
 
       setContent("");
       setPendingAttachments([]);
-      await fetchMessages(activeChatId);
+      if (isInitial) {
+        const createdChat = json.data.chat as Chat;
+        setChats((current) => sort === "oldest" ? [...current, createdChat] : [createdChat, ...current]);
+        setMessages([json.data.userMessage, json.data.assistantMessage]);
+        setActiveChatFolderId(createdChat.folder_id);
+        setDraftFolderId(null);
+        router.push(chatHref(createdChat.id));
+      } else {
+        await fetchMessages(activeChatId);
+      }
     } catch (error) {
       notifications.show({
         color: "red",
@@ -383,10 +387,18 @@ export function ChatShell({ chatId }: ChatShellProps) {
     }
   }
 
+  async function cleanupPendingAttachments(storagePaths: string[]) {
+    if (!storagePaths.length) return;
+    try {
+      await fetch("/api/uploads", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storagePaths }) });
+    } catch { /* Best-effort cleanup; the draft remains usable. */ }
+  }
+
   function removePendingAttachment(storagePath: string) {
     setPendingAttachments((previous) =>
       previous.filter((attachment) => attachment.storagePath !== storagePath),
     );
+    void cleanupPendingAttachments([storagePath]);
   }
 
   async function logout() {
@@ -451,7 +463,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
             <Button leftSection={<IconFolderPlus size={16} />} variant="light" onClick={() => setCreateFolderOpened(true)}>
               Folder
             </Button>
-            <Button leftSection={<IconMessagePlus size={16} />} onClick={() => void createChat(null)}>
+            <Button leftSection={<IconMessagePlus size={16} />} onClick={() => createDraft(null)}>
               New Chat
             </Button>
             <ActionIcon variant="subtle" onClick={logout} aria-label="Sign out">
@@ -519,7 +531,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
               <Stack gap="sm" pr="xs">
                 {folders.map((folder) => (
                   <HistoryFolderItem key={folder.id} name={folder.name}
-                    onNewChat={() => void createChat(folder.id)} onRename={() => setFolderToRename(folder)}
+                    onNewChat={() => createDraft(folder.id)} onRename={() => setFolderToRename(folder)}
                     onDelete={() => setFolderToDelete(folder)}>
                       {chats
                         .filter((chat) => chat.folder_id === folder.id)
@@ -592,7 +604,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
       </AppShell.Aside>
 
       <AppShell.Main>
-        {!activeChatId ? (
+        {!activeChatId && loading ? (
           <Stack align="center" justify="center" h="80vh">
             <Title order={2}>Select a chat or create a new one</Title>
           </Stack>

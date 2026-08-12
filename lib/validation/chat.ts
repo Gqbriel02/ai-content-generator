@@ -48,3 +48,7 @@ export const createMessageSchema = z.object({
   ),
   attachments: z.array(attachmentInputSchema).max(8).default([]),
 }).strict();
+
+export const createInitialExchangeSchema = createMessageSchema.extend({
+  folderId: z.string().uuid().nullable().default(null),
+}).strict();

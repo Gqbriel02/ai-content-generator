@@ -14,34 +14,10 @@ export async function listFolders(profileId: string) {
   return data;
 }
 
-export async function createOwnedChat(input: {
-  profileId: string;
-  folderId?: string | null;
-  title: string;
-  modelName: string;
-}) {
+export async function findFolderById(profileId: string, folderId: string) {
   const supabase = createServerSupabaseClient();
-  if (input.folderId) {
-    const { data: folder, error: folderError } = await supabase
-      .from("chat_folders")
-      .select("id")
-      .eq("id", input.folderId)
-      .eq("profile_id", input.profileId)
-      .maybeSingle();
-    if (folderError) throw folderError;
-    if (!folder) return null;
-  }
-
-  const { data, error } = await supabase
-    .from("chats")
-    .insert({
-      profile_id: input.profileId,
-      folder_id: input.folderId ?? null,
-      title: input.title,
-      model_name: input.modelName,
-    })
-    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
-    .single();
+  const { data, error } = await supabase.from("chat_folders").select("id")
+    .eq("id", folderId).eq("profile_id", profileId).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -353,6 +329,37 @@ export async function persistChatExchange(input: {
     userMessage: result.userMessage,
     assistantMessage: result.assistantMessage,
   };
+}
+
+export async function persistInitialChatExchange(input: {
+  profileId: string;
+  folderId: string | null;
+  title: string;
+  modelName: string;
+  userContent: string;
+  assistantContent: string;
+  assistantAnswerMode: AnswerMode;
+  attachments: AttachmentInput[];
+}) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("persist_initial_chat_exchange", {
+    p_profile_id: input.profileId,
+    p_folder_id: input.folderId,
+    p_title: input.title,
+    p_model_name: input.modelName,
+    p_user_content: input.userContent,
+    p_assistant_content: input.assistantContent,
+    p_assistant_answer_mode: input.assistantAnswerMode,
+    p_attachments: input.attachments.map((attachment) => ({
+      storage_path: attachment.storagePath, mime_type: attachment.mimeType,
+      width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
+    })),
+    p_assistant_payload: null,
+  });
+  if (error) throw error;
+  const result = data as { chat?: Record<string, unknown>; userMessage?: PersistedMessage; assistantMessage?: PersistedMessage } | null;
+  if (!result?.chat || !result.userMessage || !result.assistantMessage) throw new Error("The initial exchange was not returned by the database.");
+  return result as { chat: Record<string, unknown>; userMessage: PersistedMessage; assistantMessage: PersistedMessage };
 }
 
 export async function addAttachments(messageId: string, attachments: AttachmentInput[]) {

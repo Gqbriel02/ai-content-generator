@@ -11,6 +11,7 @@ import {
   listChats,
   listMessages,
   persistChatExchange,
+  persistInitialChatExchange,
   deleteOwnedChat,
   updateChatRating,
   renameOwnedChat,
@@ -146,6 +147,32 @@ describe("persistChatExchange", () => {
         assistantAnswerMode: "standard",
       }),
     ).rejects.toThrow("database unavailable");
+  });
+});
+
+describe("persistInitialChatExchange", () => {
+  it("delegates chat, messages, answer mode, folder, and attachments to one RPC", async () => {
+    rpc.mockResolvedValue({ data: {
+      chat: { id: "new-chat", folder_id: "folder-id" },
+      userMessage: { id: "user-id" }, assistantMessage: { id: "assistant-id" },
+    }, error: null });
+    await expect(persistInitialChatExchange({
+      profileId: "profile-id", folderId: "folder-id", title: "Chat title", modelName: "model",
+      userContent: "Prompt", assistantContent: "Reply", assistantAnswerMode: "tutorial",
+      attachments: [{ storagePath: "profile-id/image.png", mimeType: "image/png", sizeBytes: 12 }],
+    })).resolves.toMatchObject({ chat: { id: "new-chat" } });
+    expect(rpc).toHaveBeenCalledWith("persist_initial_chat_exchange", expect.objectContaining({
+      p_profile_id: "profile-id", p_folder_id: "folder-id", p_assistant_answer_mode: "tutorial",
+      p_attachments: [{ storage_path: "profile-id/image.png", mime_type: "image/png", width: null, height: null, size_bytes: 12 }],
+    }));
+  });
+
+  it("rejects an atomic persistence failure", async () => {
+    rpc.mockResolvedValue({ data: null, error: new Error("transaction failed") });
+    await expect(persistInitialChatExchange({
+      profileId: "profile-id", folderId: null, title: "Chat", modelName: "model",
+      userContent: "Prompt", assistantContent: "Reply", assistantAnswerMode: "standard", attachments: [],
+    })).rejects.toThrow("transaction failed");
   });
 });
 
