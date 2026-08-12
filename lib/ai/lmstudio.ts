@@ -10,7 +10,7 @@ import type { AnswerMode } from "@/lib/ai/answer-modes";
 import { getChatTitleSystemPrompt, getSystemPrompt } from "@/lib/ai/prompts";
 import {
   AI_RESPONSE_TIMEOUT_MS,
-  MAX_TOKENS_BY_MODE,
+  RESPONSE_BUDGETS,
   TITLE_GENERATION_TIMEOUT_MS,
   TITLE_MAX_TOKENS,
 } from "@/lib/ai/config";
@@ -122,7 +122,7 @@ function mapLmStudioError(error: unknown) {
 
 export async function generateAssistantReply(messages: LmMessage[], answerMode: AnswerMode) {
   try {
-    const maxTokens = MAX_TOKENS_BY_MODE[answerMode];
+    const maxTokens = RESPONSE_BUDGETS[answerMode].maxTokens;
     console.info("AI generation started.", { mode: answerMode, maxTokens, timeoutMs: AI_RESPONSE_TIMEOUT_MS });
     const completion = await primaryClient.chat.completions.create({
         model: env.LM_STUDIO_MODEL,

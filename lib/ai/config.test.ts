@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { vi } from "vitest";
 vi.mock("server-only", () => ({}));
-import { AI_RESPONSE_TIMEOUT_MS, MAX_TOKENS_BY_MODE, TITLE_GENERATION_TIMEOUT_MS, TITLE_MAX_TOKENS } from "./config";
+import { AI_RESPONSE_TIMEOUT_MS, RESPONSE_BUDGETS, TITLE_GENERATION_TIMEOUT_MS, TITLE_MAX_TOKENS } from "./config";
 
 describe("server AI generation configuration", () => {
   it("uses the intended per-mode ceilings", () => {
-    expect(MAX_TOKENS_BY_MODE).toEqual({
-      standard: 1024, concise: 512, detailed: 2048,
-      creative: 1536, code: 2048, tutorial: 1536,
+    expect(RESPONSE_BUDGETS).toEqual({
+      standard: { targetTokens: 600, maxTokens: 1024 },
+      concise: { targetTokens: 250, maxTokens: 512 },
+      detailed: { targetTokens: 1250, maxTokens: 2048 },
+      creative: { targetTokens: 900, maxTokens: 1536 },
+      code: { targetTokens: 1250, maxTokens: 2048 },
+      tutorial: { targetTokens: 800, maxTokens: 1536 },
     });
   });
   it("uses separate response and title budgets", () => {
