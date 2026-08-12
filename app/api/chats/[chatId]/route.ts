@@ -2,6 +2,9 @@ import { requireSession } from "@/lib/auth/require-session";
 import { createServerSupabaseClient } from "@/lib/db/supabase";
 import { fail, ok } from "@/lib/http/responses";
 import { updateChatSchema } from "@/lib/validation/chat";
+import { deleteOwnedChat } from "@/lib/db/chat-repo";
+import { deleteAttachmentObjects } from "@/lib/storage/attachments";
+import { z } from "zod";
 
 export async function GET(_request: Request, ctx: RouteContext<"/api/chats/[chatId]">) {
   const auth = await requireSession();
@@ -56,14 +59,25 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/chats/[c
   const auth = await requireSession();
   if ("error" in auth) return auth.error;
   const { chatId } = await ctx.params;
+  if (!z.string().uuid().safeParse(chatId).success) {
+    return fail("Chat not found.", 404);
+  }
 
-  const supabase = createServerSupabaseClient();
-  const { error } = await supabase
-    .from("chats")
-    .delete()
-    .eq("id", chatId)
-    .eq("profile_id", auth.session.profileId);
+  try {
+    const result = await deleteOwnedChat(auth.session.profileId, chatId);
+    if (!result) return fail("Chat not found.", 404);
 
-  if (error) return fail("The chat could not be deleted.", 500, error.message);
-  return ok({ deleted: true });
+    try {
+      await deleteAttachmentObjects(result.storagePaths);
+    } catch (error) {
+      // The database deletion is authoritative. Do not report it as failed and
+      // encourage a duplicate request merely because post-delete cleanup failed.
+      console.error("Deleted chat but could not clean up attachment objects.", error);
+    }
+
+    return ok({ success: true });
+  } catch (error) {
+    console.error("Unable to delete chat.", error);
+    return fail("The chat could not be deleted. Please try again.", 500);
+  }
 }

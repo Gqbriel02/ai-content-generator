@@ -21,3 +21,14 @@ export async function createAttachmentDataUrl(storagePath: string, mimeType: str
   const base64 = Buffer.from(arrayBuffer).toString("base64");
   return `data:${mimeType};base64,${base64}`;
 }
+
+export async function deleteAttachmentObjects(storagePaths: string[]) {
+  if (!storagePaths.length) return;
+
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.storage
+    .from(env.NEXT_PUBLIC_SUPABASE_BUCKET)
+    .remove(storagePaths);
+
+  if (error) throw error;
+}

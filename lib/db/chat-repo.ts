@@ -117,6 +117,64 @@ export async function findChatById(profileId: string, chatId: string) {
   return data;
 }
 
+type ChatAttachmentRecord = {
+  id: string;
+  storage_path: string;
+};
+
+type ChatWithAttachments = {
+  id: string;
+  messages?: { message_attachments?: ChatAttachmentRecord[] | null }[] | null;
+};
+
+export async function deleteOwnedChat(profileId: string, chatId: string) {
+  const supabase = createServerSupabaseClient();
+  const { data: chat, error: lookupError } = await supabase
+    .from("chats")
+    .select("id, messages(message_attachments(id, storage_path))")
+    .eq("id", chatId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+
+  if (lookupError) throw lookupError;
+  if (!chat) return null;
+
+  const attachments = ((chat as ChatWithAttachments).messages ?? []).flatMap(
+    (message) => message.message_attachments ?? [],
+  );
+  const candidatePaths = [...new Set(attachments.map((attachment) => attachment.storage_path))];
+  let exclusivePaths = candidatePaths;
+
+  // A storage path is normally unique (uploads include a UUID), but only remove
+  // objects that are not referenced outside this chat if legacy/shared rows exist.
+  if (candidatePaths.length) {
+    const { data: references, error: referenceError } = await supabase
+      .from("message_attachments")
+      .select("id, storage_path")
+      .in("storage_path", candidatePaths);
+    if (referenceError) throw referenceError;
+
+    const ownedIds = new Set(attachments.map((attachment) => attachment.id));
+    const sharedPaths = new Set(
+      ((references ?? []) as ChatAttachmentRecord[])
+        .filter((attachment) => !ownedIds.has(attachment.id))
+        .map((attachment) => attachment.storage_path),
+    );
+    exclusivePaths = candidatePaths.filter((path) => !sharedPaths.has(path));
+  }
+
+  const { data: deleted, error: deleteError } = await supabase
+    .from("chats")
+    .delete()
+    .eq("id", chatId)
+    .eq("profile_id", profileId)
+    .select("id")
+    .maybeSingle();
+
+  if (deleteError) throw deleteError;
+  return deleted ? { storagePaths: exclusivePaths } : null;
+}
+
 export async function listMessages(chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase

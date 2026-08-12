@@ -1,8 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import {
   ActionIcon,
@@ -14,7 +13,7 @@ import {
   FileButton,
   Group,
   Loader,
-  NavLink,
+  Modal,
   ScrollArea,
   Select,
   Stack,
@@ -45,6 +44,7 @@ import {
   isAnswerMode,
   type AnswerMode,
 } from "@/lib/ai/answer-modes";
+import { HistoryChatItem } from "@/components/chat/history-chat-item";
 
 type Folder = {
   id: string;
@@ -98,6 +98,9 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [pendingAttachments, setPendingAttachments] = useState<
     { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[]
   >([]);
+  const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
+  const [deletingChat, setDeletingChat] = useState(false);
+  const deleteRequestPending = useRef(false);
 
   async function fetchBootstrap(nextSearch = search, nextSort = sort) {
     setLoading(true);
@@ -264,6 +267,42 @@ export function ChatShell({ chatId }: ChatShellProps) {
     if (!response.ok) return;
     router.push(`/chat/${json.data.id}`);
     router.refresh();
+  }
+
+  async function deleteChat() {
+    if (!chatToDelete || deleteRequestPending.current) return;
+    const deletedChatId = chatToDelete.id;
+    deleteRequestPending.current = true;
+    setDeletingChat(true);
+    try {
+      const response = await fetch(`/api/chats/${deletedChatId}`, { method: "DELETE" });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.error?.message ?? "The chat could not be deleted.");
+      }
+
+      setChats((current) => current.filter((chat) => chat.id !== deletedChatId));
+      setChatToDelete(null);
+      if (deletedChatId === activeChatId) {
+        setMessages([]);
+        setRating(null);
+        router.push(`/chat${window.location.search}`);
+      }
+      notifications.show({
+        color: "green",
+        title: "Chat deleted",
+        message: "The chat was permanently deleted.",
+      });
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Chat not deleted",
+        message: error instanceof Error ? error.message : "The chat could not be deleted. Please try again.",
+      });
+    } finally {
+      deleteRequestPending.current = false;
+      setDeletingChat(false);
+    }
   }
 
   async function uploadImage(file: File | null) {
@@ -450,13 +489,14 @@ export function ChatShell({ chatId }: ChatShellProps) {
                   {chats
                     .filter((chat) => chat.folder_id === folder.id)
                     .map((chat) => (
-                      <NavLink
+                      <HistoryChatItem
                         key={chat.id}
-                        component={Link}
+                        id={chat.id}
                         href={chatHref(chat.id)}
-                        label={chat.title}
+                        title={chat.title}
                         active={pathname === `/chat/${chat.id}`}
-                        onClick={() => closeNavbar()}
+                        onSelect={closeNavbar}
+                        onDelete={() => setChatToDelete(chat)}
                       />
                     ))}
                 </Stack>
@@ -470,13 +510,14 @@ export function ChatShell({ chatId }: ChatShellProps) {
             {chats
               .filter((chat) => !chat.folder_id)
               .map((chat) => (
-                <NavLink
+                <HistoryChatItem
                   key={chat.id}
-                  component={Link}
+                  id={chat.id}
                   href={chatHref(chat.id)}
-                  label={chat.title}
+                  title={chat.title}
                   active={pathname === `/chat/${chat.id}`}
-                  onClick={() => closeNavbar()}
+                  onSelect={closeNavbar}
+                  onDelete={() => setChatToDelete(chat)}
                 />
               ))}
           </Stack> : null}
@@ -636,6 +677,32 @@ export function ChatShell({ chatId }: ChatShellProps) {
           </Stack>
         )}
       </AppShell.Main>
+
+      <Modal
+        opened={chatToDelete !== null}
+        onClose={() => {
+          if (!deletingChat) setChatToDelete(null);
+        }}
+        title="Delete chat?"
+        centered
+        closeOnClickOutside={!deletingChat}
+        closeOnEscape={!deletingChat}
+        withCloseButton={!deletingChat}
+      >
+        <Stack gap="lg">
+          <Text size="sm">
+            Are you sure you want to permanently delete this chat? This action cannot be undone.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setChatToDelete(null)} disabled={deletingChat} autoFocus>
+              Cancel
+            </Button>
+            <Button color="red" onClick={deleteChat} loading={deletingChat} disabled={deletingChat}>
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </AppShell>
   );
 }

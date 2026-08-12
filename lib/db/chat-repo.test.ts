@@ -11,8 +11,63 @@ import {
   listChats,
   listMessages,
   persistChatExchange,
+  deleteOwnedChat,
   updateChatRating,
 } from "./chat-repo";
+
+describe("deleteOwnedChat", () => {
+  it("returns null and never issues a delete for a missing or unowned chat", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const profileEq = vi.fn(() => ({ maybeSingle }));
+    const idEq = vi.fn(() => ({ eq: profileEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ eq: idEq })) });
+
+    await expect(deleteOwnedChat("other-profile", "chat-id")).resolves.toBeNull();
+    expect(idEq).toHaveBeenCalledWith("id", "chat-id");
+    expect(profileEq).toHaveBeenCalledWith("profile_id", "other-profile");
+  });
+
+  it("deletes with a second ownership predicate and returns only unshared storage paths", async () => {
+    const lookupSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: "chat-id",
+        messages: [{ message_attachments: [
+          { id: "attachment-1", storage_path: "owner/exclusive.png" },
+          { id: "attachment-2", storage_path: "owner/shared.png" },
+        ] }],
+      },
+      error: null,
+    });
+    const lookupProfileEq = vi.fn(() => ({ maybeSingle: lookupSingle }));
+    const lookupIdEq = vi.fn(() => ({ eq: lookupProfileEq }));
+
+    const inPaths = vi.fn().mockResolvedValue({
+      data: [
+        { id: "attachment-1", storage_path: "owner/exclusive.png" },
+        { id: "attachment-2", storage_path: "owner/shared.png" },
+        { id: "other-chat-attachment", storage_path: "owner/shared.png" },
+      ],
+      error: null,
+    });
+
+    const deleteSingle = vi.fn().mockResolvedValue({ data: { id: "chat-id" }, error: null });
+    const deleteSelect = vi.fn(() => ({ maybeSingle: deleteSingle }));
+    const deleteProfileEq = vi.fn(() => ({ select: deleteSelect }));
+    const deleteIdEq = vi.fn(() => ({ eq: deleteProfileEq }));
+    const deleteCall = vi.fn(() => ({ eq: deleteIdEq }));
+
+    from
+      .mockReturnValueOnce({ select: vi.fn(() => ({ eq: lookupIdEq })) })
+      .mockReturnValueOnce({ select: vi.fn(() => ({ in: inPaths })) })
+      .mockReturnValueOnce({ delete: deleteCall });
+
+    await expect(deleteOwnedChat("owner-profile", "chat-id")).resolves.toEqual({
+      storagePaths: ["owner/exclusive.png"],
+    });
+    expect(deleteIdEq).toHaveBeenCalledWith("id", "chat-id");
+    expect(deleteProfileEq).toHaveBeenCalledWith("profile_id", "owner-profile");
+  });
+});
 
 describe("persistChatExchange", () => {
   beforeEach(() => {
