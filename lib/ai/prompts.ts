@@ -19,6 +19,21 @@ const ANSWER_MODE_PROMPTS: Record<AnswerMode, string> = {
     "Explain tasks as an ordered process. Prefer numbered steps for sequential procedures and make prerequisites, actions, expected results, and important warnings clear. Do not force numbered steps when the request is not procedural.",
 };
 
+const CHAT_TITLE_SYSTEM_PROMPT = `Generate a concise title for the supplied conversation.
+
+Requirements:
+- Summarize the main subject clearly and specifically.
+- Prefer 3–7 words and natural title casing.
+- Do not use quotation marks or end with a period.
+- Do not include prefixes such as "Title:".
+- Do not use generic titles such as "New Chat", "Conversation", "User Question", or "AI Response".
+- Do not output Markdown, code fences, explanations, or alternatives.
+- Return only the title.`;
+
 export function getSystemPrompt(answerMode: AnswerMode) {
   return `${BASE_SYSTEM_PROMPT}\n\n${ANSWER_MODE_PROMPTS[answerMode]}`;
+}
+
+export function getChatTitleSystemPrompt() {
+  return CHAT_TITLE_SYSTEM_PROMPT;
 }

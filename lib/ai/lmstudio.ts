@@ -7,7 +7,7 @@ import { env } from "@/lib/config/env";
 import type { Role } from "@/types/domain";
 import { normalizeAssistantText } from "@/lib/ai/response";
 import type { AnswerMode } from "@/lib/ai/answer-modes";
-import { getSystemPrompt } from "@/lib/ai/prompts";
+import { getChatTitleSystemPrompt, getSystemPrompt } from "@/lib/ai/prompts";
 
 const primaryClient = new OpenAI({
   baseURL: env.LM_STUDIO_BASE_URL,
@@ -153,6 +153,23 @@ export async function generateAssistantReply(messages: LmMessage[], answerMode: 
     }
 
     return content;
+  } catch (error) {
+    throw mapLmStudioError(error);
+  }
+}
+
+export async function generateChatTitle(input: { userMessage: string; assistantMessage: string }) {
+  try {
+    const assistantExcerpt = input.assistantMessage.slice(0, 6000);
+    const completion = await withLmStudioFallback((client) => client.chat.completions.create({
+      model: env.LM_STUDIO_MODEL,
+      messages: [
+        { role: "system", content: getChatTitleSystemPrompt() },
+        { role: "user", content: `USER:\n${input.userMessage}\n\nASSISTANT:\n${assistantExcerpt}` },
+      ],
+      temperature: 0.15,
+    }));
+    return normalizeAssistantText(completion.choices[0]?.message?.content);
   } catch (error) {
     throw mapLmStudioError(error);
   }

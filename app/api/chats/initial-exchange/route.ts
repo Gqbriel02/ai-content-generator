@@ -4,7 +4,8 @@ import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
 import { createInitialExchangeSchema } from "@/lib/validation/chat";
 import { createAttachmentDataUrl } from "@/lib/storage/attachments";
-import { generateAssistantReply, LmStudioError } from "@/lib/ai/lmstudio";
+import { generateAssistantReply, generateChatTitle, LmStudioError } from "@/lib/ai/lmstudio";
+import { resolveInitialChatTitle } from "@/lib/ai/chat-title";
 
 export async function POST(request: Request) {
   const auth = await requireSession();
@@ -22,9 +23,16 @@ export async function POST(request: Request) {
       dataUrl: await createAttachmentDataUrl(item.storagePath, item.mimeType), mimeType: item.mimeType,
     })));
     const assistantText = await generateAssistantReply([{ role: "user", contentText: parsed.data.content, attachments }], parsed.data.answerMode);
+    let generatedTitle: string | null = null;
+    try {
+      generatedTitle = await generateChatTitle({ userMessage: parsed.data.content, assistantMessage: assistantText });
+    } catch (error) {
+      console.error("Unable to generate an initial chat title; using fallback.", error);
+    }
+    const title = resolveInitialChatTitle({ generatedTitle, userMessage: parsed.data.content });
     const result = await persistInitialChatExchange({
       profileId: auth.session.profileId, folderId: parsed.data.folderId,
-      title: `Chat ${new Date().toLocaleString()}`, modelName: process.env.LM_STUDIO_MODEL ?? "local-model",
+      title, modelName: process.env.LM_STUDIO_MODEL ?? "local-model",
       userContent: parsed.data.content, assistantContent: assistantText,
       assistantAnswerMode: parsed.data.answerMode, attachments: parsed.data.attachments,
     });
