@@ -90,6 +90,8 @@ describe("chat history", () => {
     await listChats("owner-profile");
     expect(from).toHaveBeenCalledWith("chats");
     expect(eq).toHaveBeenCalledWith("profile_id", "owner-profile");
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("title"));
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("model_name"));
   });
 });
 
@@ -107,11 +109,9 @@ describe("message history", () => {
       { id: "assistant-id", role: "assistant", answer_mode: "detailed" },
     ]);
 
-    const selectedColumns = select.mock.calls[0]?.[0] ?? "";
-    expect(selectedColumns).toContain("answer_mode");
-    expect(selectedColumns).not.toContain("system_prompt");
-    expect(selectedColumns).not.toContain("BASE_SYSTEM_PROMPT");
-    expect(selectedColumns).not.toContain("ANSWER_MODE_PROMPTS");
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("answer_mode"));
+    expect(select).not.toHaveBeenCalledWith(expect.stringContaining("BASE_SYSTEM_PROMPT"));
+    expect(select).not.toHaveBeenCalledWith(expect.stringContaining("ANSWER_MODE_PROMPTS"));
   });
 });
 

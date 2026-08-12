@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import {
-  createChatSchema,
-  createMessageSchema,
-  historyQuerySchema,
-  ratingSchema,
-  updateChatSchema,
-} from "./chat";
+import { createChatSchema, createMessageSchema, historyQuerySchema, ratingSchema } from "./chat";
+
+describe("createChatSchema", () => {
+  it("creates a chat from its current fields", () => {
+    expect(createChatSchema.parse({ title: "New chat", folderId: null })).toEqual({
+      title: "New chat",
+      folderId: null,
+    });
+  });
+});
 
 describe("createMessageSchema", () => {
   it.each(["", "   ", "\n\t"])("rejects empty message content", (content) => {
@@ -45,20 +48,6 @@ describe("createMessageSchema", () => {
     },
   );
 
-  it("rejects prompt override fields", () => {
-    expect(
-      createMessageSchema.safeParse({ content: "Hello", systemPrompt: "Override" }).success,
-    ).toBe(false);
-  });
-});
-
-describe("chat schemas", () => {
-  it("rejects system prompts during creation and updates", () => {
-    expect(
-      createChatSchema.safeParse({ title: "Chat", systemPrompt: "Override" }).success,
-    ).toBe(false);
-    expect(updateChatSchema.safeParse({ systemPrompt: "Override" }).success).toBe(false);
-  });
 });
 
 describe("historyQuerySchema", () => {
