@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { DEFAULT_ANSWER_MODE, isAnswerMode } from "../ai/answer-modes";
 
+export const FOLDER_NAME_MAX_LENGTH = 80;
+
 export const createFolderSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(FOLDER_NAME_MAX_LENGTH),
 });
 
 export const updateFolderSchema = z.object({
-  name: z.string().trim().min(1).max(80).optional(),
+  name: z.string().trim().min(1).max(FOLDER_NAME_MAX_LENGTH).optional(),
   position: z.number().int().nonnegative().optional(),
 });
 

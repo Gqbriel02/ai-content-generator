@@ -45,6 +45,7 @@ import {
   type AnswerMode,
 } from "@/lib/ai/answer-modes";
 import { HistoryChatItem } from "@/components/chat/history-chat-item";
+import { CreateFolderModal } from "@/components/chat/create-folder-modal";
 
 type Folder = {
   id: string;
@@ -100,6 +101,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   >([]);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [deletingChat, setDeletingChat] = useState(false);
+  const [createFolderOpened, setCreateFolderOpened] = useState(false);
   const deleteRequestPending = useRef(false);
 
   async function fetchBootstrap(nextSearch = search, nextSort = sort) {
@@ -160,8 +162,6 @@ export function ChatShell({ chatId }: ChatShellProps) {
     return () => {
       cancelled = true;
     };
-  // Bootstrap intentionally runs only once; subsequent history changes call fetchBootstrap explicitly.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -239,19 +239,6 @@ export function ChatShell({ chatId }: ChatShellProps) {
     } finally {
       setRatingPending(false);
     }
-  }
-
-  async function createFolder() {
-    const name = window.prompt("Folder name");
-    if (!name?.trim()) return;
-
-    const response = await fetch("/api/folders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (!response.ok) return;
-    await fetchBootstrap();
   }
 
   async function createChat() {
@@ -422,7 +409,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
               size="sm"
               aria-label="Toggle settings panel"
             />
-            <Button leftSection={<IconFolderPlus size={16} />} variant="light" onClick={createFolder}>
+            <Button leftSection={<IconFolderPlus size={16} />} variant="light" onClick={() => setCreateFolderOpened(true)}>
               Folder
             </Button>
             <Button leftSection={<IconMessagePlus size={16} />} onClick={createChat}>
@@ -721,6 +708,13 @@ export function ChatShell({ chatId }: ChatShellProps) {
           </Group>
         </Stack>
       </Modal>
+      {createFolderOpened ? (
+        <CreateFolderModal
+          opened
+          onClose={() => setCreateFolderOpened(false)}
+          onCreated={(folder) => setFolders((current) => [...current, folder])}
+        />
+      ) : null}
     </AppShell>
   );
 }
