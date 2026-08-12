@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ActionIcon, Group, Menu, NavLink, Text } from "@mantine/core";
+import { ActionIcon, Group, Menu, NavLink, Text, Tooltip } from "@mantine/core";
 import { IconDotsVertical, IconEdit, IconTrash } from "@tabler/icons-react";
 
 type HistoryChatItemProps = {
@@ -22,7 +22,19 @@ export function HistoryChatItem({ title, href, active, onSelect, onRename, onDel
         href={href}
         active={active}
         onClick={onSelect}
-        label={<Text size="sm" truncate>{title}</Text>}
+        label={(
+          <Tooltip label={title} multiline maw={360} withinPortal>
+            <Text
+              size="sm"
+              truncate
+              data-chat-title={title}
+              data-tooltip-label={title}
+              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {title}
+            </Text>
+          </Tooltip>
+        )}
         style={{ flex: 1, minWidth: 0 }}
       />
       <Menu position="bottom-end" withinPortal shadow="md">

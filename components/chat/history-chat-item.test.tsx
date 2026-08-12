@@ -101,4 +101,45 @@ describe("HistoryChatItem", () => {
 
     expect(container.querySelector('a[href="/chat/selected-chat"]')?.getAttribute("data-active")).toBe("true");
   });
+
+  it("keeps the visible title truncated and exposes the complete title in a tooltip", async () => {
+    const title = "Understanding React Server Components and Their Rendering Lifecycle";
+    await act(async () => {
+      root.render(
+        <MantineProvider>
+          <HistoryChatItem
+            id="long-title-chat"
+            title={title}
+            href="/chat/long-title-chat"
+            active={false}
+            onSelect={vi.fn()}
+            onRename={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </MantineProvider>,
+      );
+    });
+
+    const titleElement = document.querySelector<HTMLElement>(`[data-chat-title="${title}"]`)!;
+    expect(titleElement.textContent).toBe(title);
+    expect(titleElement.style.overflow).toBe("hidden");
+    expect(titleElement.style.textOverflow).toBe("ellipsis");
+    expect(titleElement.style.whiteSpace).toBe("nowrap");
+
+    expect(titleElement.getAttribute("data-tooltip-label")).toBe(title);
+  });
+
+  it("still selects the chat when its title is clicked", async () => {
+    const onSelect = vi.fn();
+    await act(async () => {
+      root.render(
+        <MantineProvider>
+          <HistoryChatItem id="chat-id" title="Clickable title" href="/chat/chat-id" active={false}
+            onSelect={onSelect} onRename={vi.fn()} onDelete={vi.fn()} />
+        </MantineProvider>,
+      );
+    });
+    await act(async () => document.querySelector<HTMLElement>('[data-chat-title="Clickable title"]')!.click());
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
 });
