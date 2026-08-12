@@ -8,22 +8,19 @@ import type { Role } from "@/types/domain";
 import { normalizeAssistantText } from "@/lib/ai/response";
 import type { AnswerMode } from "@/lib/ai/answer-modes";
 import { getChatTitleSystemPrompt, getSystemPrompt } from "@/lib/ai/prompts";
+import {
+  AI_RESPONSE_TIMEOUT_MS,
+  MAX_TOKENS_BY_MODE,
+  TITLE_GENERATION_TIMEOUT_MS,
+  TITLE_MAX_TOKENS,
+} from "@/lib/ai/config";
 
 const primaryClient = new OpenAI({
   baseURL: env.LM_STUDIO_BASE_URL,
   apiKey: env.LM_STUDIO_API_KEY,
+  maxRetries: 0,
+  timeout: AI_RESPONSE_TIMEOUT_MS,
 });
-
-const fallbackBaseUrl = env.LM_STUDIO_BASE_URL.includes("localhost")
-  ? env.LM_STUDIO_BASE_URL.replace("localhost", "127.0.0.1")
-  : null;
-
-const fallbackClient = fallbackBaseUrl
-  ? new OpenAI({
-      baseURL: fallbackBaseUrl,
-      apiKey: env.LM_STUDIO_API_KEY,
-    })
-  : null;
 
 type LmMessage = {
   role: Role;
@@ -100,17 +97,6 @@ function isConnectivityError(error: unknown) {
   );
 }
 
-async function withLmStudioFallback<T>(run: (client: OpenAI) => Promise<T>) {
-  try {
-    return await run(primaryClient);
-  } catch (error) {
-    if (fallbackClient && isConnectivityError(error)) {
-      return run(fallbackClient);
-    }
-    throw error;
-  }
-}
-
 function mapLmStudioError(error: unknown) {
   const fallback =
     "Unable to connect to the local AI model. Check that LM Studio is running and the model is loaded.";
@@ -136,18 +122,24 @@ function mapLmStudioError(error: unknown) {
 
 export async function generateAssistantReply(messages: LmMessage[], answerMode: AnswerMode) {
   try {
-    const completion = await withLmStudioFallback((client) =>
-      client.chat.completions.create({
+    const maxTokens = MAX_TOKENS_BY_MODE[answerMode];
+    console.info("AI generation started.", { mode: answerMode, maxTokens, timeoutMs: AI_RESPONSE_TIMEOUT_MS });
+    const completion = await primaryClient.chat.completions.create({
         model: env.LM_STUDIO_MODEL,
         messages: [
           { role: "system", content: getSystemPrompt(answerMode) },
           ...mapMessages(messages.filter((message) => message.role !== "system")),
         ],
         temperature: 0.35,
-      }),
-    );
+        max_tokens: maxTokens,
+      }, { timeout: AI_RESPONSE_TIMEOUT_MS, maxRetries: 0 });
 
-    const content = normalizeAssistantText(completion.choices[0]?.message?.content);
+    const choice = completion.choices[0];
+    console.info("AI generation completed.", { finishReason: choice?.finish_reason ?? "unknown" });
+    if (choice?.finish_reason === "length") {
+      console.warn("AI response reached its configured token limit.", { mode: answerMode, maxTokens });
+    }
+    const content = normalizeAssistantText(choice?.message?.content);
     if (!content) {
       throw new LmStudioError("The local AI model returned an empty response. Please try again.", 502);
     }
@@ -161,14 +153,16 @@ export async function generateAssistantReply(messages: LmMessage[], answerMode: 
 export async function generateChatTitle(input: { userMessage: string; assistantMessage: string }) {
   try {
     const assistantExcerpt = input.assistantMessage.slice(0, 6000);
-    const completion = await withLmStudioFallback((client) => client.chat.completions.create({
+    const completion = await primaryClient.chat.completions.create({
       model: env.LM_STUDIO_MODEL,
       messages: [
         { role: "system", content: getChatTitleSystemPrompt() },
         { role: "user", content: `USER:\n${input.userMessage}\n\nASSISTANT:\n${assistantExcerpt}` },
       ],
       temperature: 0.15,
-    }));
+      max_tokens: TITLE_MAX_TOKENS,
+    }, { timeout: TITLE_GENERATION_TIMEOUT_MS, maxRetries: 0 });
+    console.info("AI title generation completed.", { finishReason: completion.choices[0]?.finish_reason ?? "unknown" });
     return normalizeAssistantText(completion.choices[0]?.message?.content);
   } catch (error) {
     throw mapLmStudioError(error);

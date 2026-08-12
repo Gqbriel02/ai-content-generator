@@ -6,7 +6,7 @@ const BASE_SYSTEM_PROMPT = `You are a helpful, accurate, practical, and clear AI
 
 const ANSWER_MODE_PROMPTS: Record<AnswerMode, string> = {
   standard:
-    "Use a balanced response length and level of detail. Answer clearly and directly, with enough explanation to fully address the question and no unnecessary verbosity.",
+    "Use a balanced response length and level of detail. Match response depth to the complexity of the request. For simple everyday or factual requests, answer simply and directly without exhaustive background, excessive structure, warnings, or extended explanation unless useful or requested.",
   concise:
     "Prefer short responses. Give the essential answer first and omit unnecessary background, repetition, examples, and commentary unless they are needed for correctness.",
   detailed:
