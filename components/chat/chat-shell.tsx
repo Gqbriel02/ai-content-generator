@@ -394,6 +394,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
         navbar: {
           backgroundColor: "#ffffff",
           borderRight: "1px solid var(--mantine-color-gray-3)",
+          overflow: "hidden",
         },
         aside: {
           backgroundColor: "#ffffff",
@@ -435,7 +436,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
       </AppShell.Header>
 
       <AppShell.Navbar p="sm">
-        <Stack gap="sm">
+        <Stack gap="sm" h="100%" style={{ minHeight: 0, overflow: "hidden" }}>
           <Text fw={600}>History</Text>
           <form onSubmit={(event) => { event.preventDefault(); applyHistoryQuery(searchDraft, sort); }}>
             <Group gap="xs" wrap="nowrap">
@@ -482,45 +483,62 @@ export function ChatShell({ chatId }: ChatShellProps) {
           ) : null}
           <Text fw={600}>Folders</Text>
           {!loading && !historyError ? (
-            folders.map((folder) => (
-              <Box key={folder.id} p={8} style={{ border: "1px solid var(--mantine-color-gray-3)", borderRadius: 8 }}>
-                <Text size="sm">{folder.name}</Text>
-                <Stack gap={2} mt={6}>
-                  {chats
-                    .filter((chat) => chat.folder_id === folder.id)
-                    .map((chat) => (
-                      <HistoryChatItem
-                        key={chat.id}
-                        id={chat.id}
-                        href={chatHref(chat.id)}
-                        title={chat.title}
-                        active={pathname === `/chat/${chat.id}`}
-                        onSelect={closeNavbar}
-                        onDelete={() => setChatToDelete(chat)}
-                      />
-                    ))}
-                </Stack>
-              </Box>
-            ))
+            <ScrollArea.Autosize
+              type="auto"
+              mah="30dvh"
+              offsetScrollbars
+              viewportProps={{ "aria-label": "Folders", tabIndex: 0 }}
+              style={{ flexShrink: 1, minHeight: 0 }}
+            >
+              <Stack gap="sm" pr="xs">
+                {folders.map((folder) => (
+                  <Box key={folder.id} p={8} style={{ border: "1px solid var(--mantine-color-gray-3)", borderRadius: 8 }}>
+                    <Text size="sm">{folder.name}</Text>
+                    <Stack gap={2} mt={6}>
+                      {chats
+                        .filter((chat) => chat.folder_id === folder.id)
+                        .map((chat) => (
+                          <HistoryChatItem
+                            key={chat.id}
+                            id={chat.id}
+                            href={chatHref(chat.id)}
+                            title={chat.title}
+                            active={pathname === `/chat/${chat.id}`}
+                            onSelect={closeNavbar}
+                            onDelete={() => setChatToDelete(chat)}
+                          />
+                        ))}
+                    </Stack>
+                  </Box>
+                ))}
+              </Stack>
+            </ScrollArea.Autosize>
           ) : null}
-          {!loading && !historyError ? <Text fw={600} mt="sm">
-            No Folder
-          </Text> : null}
-          {!loading && !historyError ? <Stack gap={2}>
-            {chats
-              .filter((chat) => !chat.folder_id)
-              .map((chat) => (
-                <HistoryChatItem
-                  key={chat.id}
-                  id={chat.id}
-                  href={chatHref(chat.id)}
-                  title={chat.title}
-                  active={pathname === `/chat/${chat.id}`}
-                  onSelect={closeNavbar}
-                  onDelete={() => setChatToDelete(chat)}
-                />
-              ))}
-          </Stack> : null}
+          {!loading && !historyError ? <Text fw={600}>No Folder</Text> : null}
+          {!loading && !historyError ? (
+            <ScrollArea
+              type="auto"
+              offsetScrollbars
+              viewportProps={{ "aria-label": "Chat history", tabIndex: 0 }}
+              style={{ flex: 1, minHeight: 0 }}
+            >
+              <Stack gap={2} pr="xs">
+                {chats
+                  .filter((chat) => !chat.folder_id)
+                  .map((chat) => (
+                    <HistoryChatItem
+                      key={chat.id}
+                      id={chat.id}
+                      href={chatHref(chat.id)}
+                      title={chat.title}
+                      active={pathname === `/chat/${chat.id}`}
+                      onSelect={closeNavbar}
+                      onDelete={() => setChatToDelete(chat)}
+                    />
+                  ))}
+              </Stack>
+            </ScrollArea>
+          ) : null}
         </Stack>
       </AppShell.Navbar>
 

@@ -71,4 +71,23 @@ describe("HistoryChatItem", () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it("preserves selected-chat styling", async () => {
+    await act(async () => {
+      root.render(
+        <MantineProvider>
+          <HistoryChatItem
+            id="selected-chat"
+            title="Selected chat"
+            href="/chat/selected-chat"
+            active
+            onSelect={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </MantineProvider>,
+      );
+    });
+
+    expect(container.querySelector('a[href="/chat/selected-chat"]')?.getAttribute("data-active")).toBe("true");
+  });
 });
