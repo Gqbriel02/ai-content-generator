@@ -66,7 +66,7 @@ describe("CreateFolderModal", () => {
     const onClose = vi.fn();
     await renderModal({ onClose });
 
-    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Dissertation"]');
+    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Project..."]');
     expect(input?.value).toBe("");
     expect(input?.hasAttribute("data-autofocus")).toBe(true);
     expect(document.querySelector("[data-centered]")).not.toBeNull();
@@ -80,7 +80,7 @@ describe("CreateFolderModal", () => {
 
   it("does not submit empty or whitespace-only names", async () => {
     await renderModal();
-    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Dissertation"]')!;
+    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Project..."]')!;
     const create = [...document.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent === "Create")!;
     expect(create.disabled).toBe(true);
@@ -96,7 +96,7 @@ describe("CreateFolderModal", () => {
     let resolveRequest!: (value: Response) => void;
     vi.mocked(fetch).mockReturnValue(new Promise((resolve) => { resolveRequest = resolve; }));
     await renderModal({ onCreated, onClose });
-    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Dissertation"]')!;
+    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Project..."]')!;
     await act(async () => setInputValue(input, "  Dissertation  "));
 
     const form = input.closest("form")!;
@@ -122,7 +122,7 @@ describe("CreateFolderModal", () => {
     ));
     const onClose = vi.fn();
     await renderModal({ onClose });
-    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Dissertation"]')!;
+    const input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Project..."]')!;
     await act(async () => setInputValue(input, "Work"));
     await act(async () => {
       input.closest("form")!.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
@@ -138,7 +138,7 @@ describe("CreateFolderModal", () => {
   it("resets the name when reopened", async () => {
     const onClose = vi.fn();
     await renderModal({ onClose });
-    let input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Dissertation"]')!;
+    let input = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Project..."]')!;
     await act(async () => setInputValue(input, "Temporary name"));
 
     await act(async () => {
@@ -156,7 +156,7 @@ describe("CreateFolderModal", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     });
 
-    input = [...document.querySelectorAll<HTMLInputElement>('input[placeholder="e.g. Dissertation"]')].at(-1)!;
+    input = [...document.querySelectorAll<HTMLInputElement>('input[placeholder="e.g. Project..."]')].at(-1)!;
     expect(input.value).toBe("");
   });
 });
