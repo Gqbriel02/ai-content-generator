@@ -1,31 +1,32 @@
 import { requireSession } from "@/lib/auth/require-session";
-import { createServerSupabaseClient } from "@/lib/db/supabase";
 import { fail, ok } from "@/lib/http/responses";
 import { updateFolderSchema } from "@/lib/validation/chat";
+import { deleteOwnedFolder, renameOwnedFolder } from "@/lib/db/chat-repo";
+import { deleteAttachmentObjects } from "@/lib/storage/attachments";
+import { z } from "zod";
 
 export async function PATCH(request: Request, ctx: RouteContext<"/api/folders/[folderId]">) {
   const auth = await requireSession();
   if ("error" in auth) return auth.error;
 
   const { folderId } = await ctx.params;
-  const body = await request.json();
+  if (!z.string().uuid().safeParse(folderId).success) return fail("Folder not found.", 404);
+  let body: unknown;
+  try { body = await request.json(); } catch { return fail("The request body must contain valid JSON.", 400); }
   const parsed = updateFolderSchema.safeParse(body);
 
   if (!parsed.success) {
     return fail("Invalid folder details.", 400, parsed.error.flatten());
   }
 
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("chat_folders")
-    .update(parsed.data)
-    .eq("id", folderId)
-    .eq("profile_id", auth.session.profileId)
-    .select("*")
-    .single();
-
-  if (error) return fail("The folder could not be updated.", 500, error.message);
-  return ok(data);
+  try {
+    const folder = await renameOwnedFolder(auth.session.profileId, folderId, parsed.data.name);
+    if (!folder) return fail("Folder not found.", 404);
+    return ok(folder);
+  } catch (error) {
+    console.error("Unable to rename folder.", error);
+    return fail("The folder could not be renamed. Please try again.", 500);
+  }
 }
 
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/folders/[folderId]">) {
@@ -33,19 +34,15 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/folders/
   if ("error" in auth) return auth.error;
   const { folderId } = await ctx.params;
 
-  const supabase = createServerSupabaseClient();
-  await supabase
-    .from("chats")
-    .update({ folder_id: null })
-    .eq("folder_id", folderId)
-    .eq("profile_id", auth.session.profileId);
-
-  const { error } = await supabase
-    .from("chat_folders")
-    .delete()
-    .eq("id", folderId)
-    .eq("profile_id", auth.session.profileId);
-
-  if (error) return fail("The folder could not be deleted.", 500, error.message);
-  return ok({ deleted: true });
+  if (!z.string().uuid().safeParse(folderId).success) return fail("Folder not found.", 404);
+  try {
+    const result = await deleteOwnedFolder(auth.session.profileId, folderId);
+    if (!result) return fail("Folder not found.", 404);
+    try { await deleteAttachmentObjects(result.storagePaths); }
+    catch (error) { console.error("Deleted folder but could not clean up attachment objects.", error); }
+    return ok({ success: true });
+  } catch (error) {
+    console.error("Unable to delete folder.", error);
+    return fail("The folder could not be deleted. Please try again.", 500);
+  }
 }

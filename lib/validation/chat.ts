@@ -8,9 +8,8 @@ export const createFolderSchema = z.object({
 });
 
 export const updateFolderSchema = z.object({
-  name: z.string().trim().min(1).max(FOLDER_NAME_MAX_LENGTH).optional(),
-  position: z.number().int().nonnegative().optional(),
-});
+  name: z.string().trim().min(1).max(FOLDER_NAME_MAX_LENGTH),
+}).strict();
 
 export const createChatSchema = z.object({
   title: z.string().trim().min(1).max(120),

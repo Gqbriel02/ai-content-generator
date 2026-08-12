@@ -14,6 +14,98 @@ export async function listFolders(profileId: string) {
   return data;
 }
 
+export async function createOwnedChat(input: {
+  profileId: string;
+  folderId?: string | null;
+  title: string;
+  modelName: string;
+}) {
+  const supabase = createServerSupabaseClient();
+  if (input.folderId) {
+    const { data: folder, error: folderError } = await supabase
+      .from("chat_folders")
+      .select("id")
+      .eq("id", input.folderId)
+      .eq("profile_id", input.profileId)
+      .maybeSingle();
+    if (folderError) throw folderError;
+    if (!folder) return null;
+  }
+
+  const { data, error } = await supabase
+    .from("chats")
+    .insert({
+      profile_id: input.profileId,
+      folder_id: input.folderId ?? null,
+      title: input.title,
+      model_name: input.modelName,
+    })
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function renameOwnedFolder(profileId: string, folderId: string, name: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("chat_folders")
+    .update({ name })
+    .eq("id", folderId)
+    .eq("profile_id", profileId)
+    .select("id, name, position, created_at")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+type FolderWithAttachments = {
+  id: string;
+  chats?: { messages?: { message_attachments?: ChatAttachmentRecord[] | null }[] | null }[] | null;
+};
+
+export async function deleteOwnedFolder(profileId: string, folderId: string) {
+  const supabase = createServerSupabaseClient();
+  const { data: folder, error: lookupError } = await supabase
+    .from("chat_folders")
+    .select("id, chats(messages(message_attachments(id, storage_path)))")
+    .eq("id", folderId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (!folder) return null;
+
+  const attachments = ((folder as FolderWithAttachments).chats ?? []).flatMap((chat) =>
+    (chat.messages ?? []).flatMap((message) => message.message_attachments ?? []),
+  );
+  const candidatePaths = [...new Set(attachments.map((attachment) => attachment.storage_path))];
+  let exclusivePaths = candidatePaths;
+  if (candidatePaths.length) {
+    const { data: references, error: referenceError } = await supabase
+      .from("message_attachments")
+      .select("id, storage_path")
+      .in("storage_path", candidatePaths);
+    if (referenceError) throw referenceError;
+    const ownedIds = new Set(attachments.map((attachment) => attachment.id));
+    const sharedPaths = new Set(
+      ((references ?? []) as ChatAttachmentRecord[])
+        .filter((attachment) => !ownedIds.has(attachment.id))
+        .map((attachment) => attachment.storage_path),
+    );
+    exclusivePaths = candidatePaths.filter((path) => !sharedPaths.has(path));
+  }
+
+  const { data: deleted, error: deleteError } = await supabase
+    .from("chat_folders")
+    .delete()
+    .eq("id", folderId)
+    .eq("profile_id", profileId)
+    .select("id")
+    .maybeSingle();
+  if (deleteError) throw deleteError;
+  return deleted ? { storagePaths: exclusivePaths } : null;
+}
+
 export type HistorySort = "newest" | "oldest";
 
 export const CHAT_HISTORY_LIMIT = 100;

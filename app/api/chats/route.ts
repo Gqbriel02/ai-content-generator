@@ -1,6 +1,5 @@
 import { requireSession } from "@/lib/auth/require-session";
-import { createServerSupabaseClient } from "@/lib/db/supabase";
-import { listChats } from "@/lib/db/chat-repo";
+import { createOwnedChat, listChats } from "@/lib/db/chat-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { createChatSchema, historyQuerySchema } from "@/lib/validation/chat";
 
@@ -37,18 +36,17 @@ export async function POST(request: Request) {
     return fail("Invalid chat details.", 400, parsed.error.flatten());
   }
 
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("chats")
-    .insert({
-      profile_id: auth.session.profileId,
-      folder_id: parsed.data.folderId ?? null,
+  try {
+    const chat = await createOwnedChat({
+      profileId: auth.session.profileId,
+      folderId: parsed.data.folderId,
       title: parsed.data.title,
-      model_name: process.env.LM_STUDIO_MODEL ?? "local-model",
-    })
-    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
-    .single();
-
-  if (error) return fail("The chat could not be created.", 500, error.message);
-  return ok(data, { status: 201 });
+      modelName: process.env.LM_STUDIO_MODEL ?? "local-model",
+    });
+    if (!chat) return fail("Folder not found.", 404);
+    return ok(chat, { status: 201 });
+  } catch (error) {
+    console.error("Unable to create chat.", error);
+    return fail("The chat could not be created.", 500);
+  }
 }

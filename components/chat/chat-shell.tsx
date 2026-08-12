@@ -46,6 +46,9 @@ import {
 } from "@/lib/ai/answer-modes";
 import { HistoryChatItem } from "@/components/chat/history-chat-item";
 import { CreateFolderModal } from "@/components/chat/create-folder-modal";
+import { HistoryFolderItem } from "@/components/chat/history-folder-item";
+import { RenameFolderModal } from "@/components/chat/rename-folder-modal";
+import { DeleteFolderModal } from "@/components/chat/delete-folder-modal";
 
 type Folder = {
   id: string;
@@ -87,6 +90,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [rating, setRating] = useState<1 | -1 | null>(null);
+  const [activeChatFolderId, setActiveChatFolderId] = useState<string | null>(null);
   const [ratingPending, setRatingPending] = useState(false);
   const [historyError, setHistoryError] = useState(false);
   const [searchDraft, setSearchDraft] = useState("");
@@ -102,7 +106,11 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [deletingChat, setDeletingChat] = useState(false);
   const [createFolderOpened, setCreateFolderOpened] = useState(false);
+  const [folderToRename, setFolderToRename] = useState<Folder | null>(null);
+  const [folderToDelete, setFolderToDelete] = useState<Folder | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState(false);
   const deleteRequestPending = useRef(false);
+  const folderDeletePending = useRef(false);
 
   async function fetchBootstrap(nextSearch = search, nextSort = sort) {
     setLoading(true);
@@ -145,6 +153,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
     }
     setMessages(messageJson.data);
     setRating(chatJson.data.rating ?? null);
+    setActiveChatFolderId(chatJson.data.folder_id ?? null);
   }
 
   useEffect(() => {
@@ -171,6 +180,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
         if (!cancelled) {
           setMessages([]);
           setRating(null);
+          setActiveChatFolderId(null);
         }
         return;
       }
@@ -241,19 +251,45 @@ export function ChatShell({ chatId }: ChatShellProps) {
     }
   }
 
-  async function createChat() {
+  async function createChat(folderId: string | null = null) {
     const response = await fetch("/api/chats", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: `Chat ${new Date().toLocaleString()}`,
-        folderId: null,
+        folderId,
       }),
     });
     const json = await response.json();
-    if (!response.ok) return;
-    router.push(`/chat/${json.data.id}`);
-    router.refresh();
+    if (!response.ok) {
+      notifications.show({ color: "red", title: "Chat not created", message: json?.error?.message ?? "The chat could not be created." });
+      return;
+    }
+    setChats((current) => [json.data, ...current]);
+    setMessages([]);
+    setRating(null);
+    setActiveChatFolderId(json.data.folder_id ?? null);
+    router.push(chatHref(json.data.id));
+  }
+
+  async function deleteFolder() {
+    if (!folderToDelete || folderDeletePending.current) return;
+    const folder = folderToDelete;
+    folderDeletePending.current = true; setDeletingFolder(true);
+    try {
+      const response = await fetch(`/api/folders/${folder.id}`, { method: "DELETE" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error?.message ?? "The folder could not be deleted.");
+      setFolders((current) => current.filter((item) => item.id !== folder.id));
+      setChats((current) => current.filter((chat) => chat.folder_id !== folder.id));
+      setFolderToDelete(null);
+      if (activeChatId && activeChatFolderId === folder.id) {
+        setMessages([]); setRating(null); setActiveChatFolderId(null); router.push(`/chat${window.location.search}`);
+      }
+      notifications.show({ color: "green", title: "Folder deleted", message: `“${folder.name}” and its chats were permanently deleted.` });
+    } catch (error) {
+      notifications.show({ color: "red", title: "Folder not deleted", message: error instanceof Error ? error.message : "The folder could not be deleted." });
+    } finally { folderDeletePending.current = false; setDeletingFolder(false); }
   }
 
   async function deleteChat() {
@@ -273,6 +309,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
       if (deletedChatId === activeChatId) {
         setMessages([]);
         setRating(null);
+        setActiveChatFolderId(null);
         router.push(`/chat${window.location.search}`);
       }
       notifications.show({
@@ -412,7 +449,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
             <Button leftSection={<IconFolderPlus size={16} />} variant="light" onClick={() => setCreateFolderOpened(true)}>
               Folder
             </Button>
-            <Button leftSection={<IconMessagePlus size={16} />} onClick={createChat}>
+            <Button leftSection={<IconMessagePlus size={16} />} onClick={() => void createChat(null)}>
               New Chat
             </Button>
             <ActionIcon variant="subtle" onClick={logout} aria-label="Sign out">
@@ -479,9 +516,9 @@ export function ChatShell({ chatId }: ChatShellProps) {
             >
               <Stack gap="sm" pr="xs">
                 {folders.map((folder) => (
-                  <Box key={folder.id} p={8} style={{ border: "1px solid var(--mantine-color-gray-3)", borderRadius: 8 }}>
-                    <Text size="sm">{folder.name}</Text>
-                    <Stack gap={2} mt={6}>
+                  <HistoryFolderItem key={folder.id} name={folder.name}
+                    onNewChat={() => void createChat(folder.id)} onRename={() => setFolderToRename(folder)}
+                    onDelete={() => setFolderToDelete(folder)}>
                       {chats
                         .filter((chat) => chat.folder_id === folder.id)
                         .map((chat) => (
@@ -495,8 +532,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
                             onDelete={() => setChatToDelete(chat)}
                           />
                         ))}
-                    </Stack>
-                  </Box>
+                  </HistoryFolderItem>
                 ))}
               </Stack>
             </ScrollArea.Autosize>
@@ -715,6 +751,10 @@ export function ChatShell({ chatId }: ChatShellProps) {
           onCreated={(folder) => setFolders((current) => [...current, folder])}
         />
       ) : null}
+      {folderToRename ? <RenameFolderModal folder={folderToRename} opened onClose={() => setFolderToRename(null)}
+        onRenamed={(folder) => { setFolders((current) => current.map((item) => item.id === folder.id ? { ...item, ...folder } : item)); setFolderToRename(null); notifications.show({ color: "green", title: "Folder renamed", message: `Folder renamed to “${folder.name}”.` }); }} /> : null}
+      <DeleteFolderModal opened={folderToDelete !== null} deleting={deletingFolder}
+        onClose={() => setFolderToDelete(null)} onConfirm={() => void deleteFolder()} />
     </AppShell>
   );
 }
