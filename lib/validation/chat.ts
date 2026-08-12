@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DEFAULT_ANSWER_MODE, isAnswerMode } from "../ai/answer-modes";
 
 export const FOLDER_NAME_MAX_LENGTH = 80;
+export const CHAT_TITLE_MAX_LENGTH = 120;
 
 export const createFolderSchema = z.object({
   name: z.string().trim().min(1).max(FOLDER_NAME_MAX_LENGTH),
@@ -12,13 +13,12 @@ export const updateFolderSchema = z.object({
 }).strict();
 
 export const createChatSchema = z.object({
-  title: z.string().trim().min(1).max(120),
+  title: z.string().trim().min(1).max(CHAT_TITLE_MAX_LENGTH),
   folderId: z.string().uuid().nullable().optional(),
 }).strict();
 
 export const updateChatSchema = z.object({
-  title: z.string().trim().min(1).max(120).optional(),
-  folderId: z.string().uuid().nullable().optional(),
+  title: z.string().trim().min(1).max(CHAT_TITLE_MAX_LENGTH),
 }).strict();
 
 export const HISTORY_SEARCH_MAX_LENGTH = 200;

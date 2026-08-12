@@ -13,7 +13,33 @@ import {
   persistChatExchange,
   deleteOwnedChat,
   updateChatRating,
+  renameOwnedChat,
 } from "./chat-repo";
+
+describe("renameOwnedChat", () => {
+  it("updates only the title of the owning profile's chat", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "chat-id", title: "Renamed", folder_id: "folder-id" }, error: null });
+    const select = vi.fn(() => ({ maybeSingle }));
+    const profileEq = vi.fn(() => ({ select }));
+    const idEq = vi.fn(() => ({ eq: profileEq }));
+    const update = vi.fn(() => ({ eq: idEq }));
+    from.mockReturnValueOnce({ update });
+
+    await expect(renameOwnedChat("owner", "chat-id", "Renamed")).resolves.toMatchObject({ title: "Renamed", folder_id: "folder-id" });
+    expect(update).toHaveBeenCalledWith({ title: "Renamed", updated_at: expect.any(String) });
+    expect(idEq).toHaveBeenCalledWith("id", "chat-id");
+    expect(profileEq).toHaveBeenCalledWith("profile_id", "owner");
+  });
+
+  it("returns null for a missing or unowned chat", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const select = vi.fn(() => ({ maybeSingle }));
+    const profileEq = vi.fn(() => ({ select }));
+    const idEq = vi.fn(() => ({ eq: profileEq }));
+    from.mockReturnValueOnce({ update: vi.fn(() => ({ eq: idEq })) });
+    await expect(renameOwnedChat("other-owner", "chat-id", "Renamed")).resolves.toBeNull();
+  });
+});
 
 describe("deleteOwnedChat", () => {
   it("returns null and never issues a delete for a missing or unowned chat", async () => {

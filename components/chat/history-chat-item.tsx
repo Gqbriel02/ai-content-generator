@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ActionIcon, Group, Menu, NavLink, Text } from "@mantine/core";
-import { IconDotsVertical, IconTrash } from "@tabler/icons-react";
+import { IconDotsVertical, IconEdit, IconTrash } from "@tabler/icons-react";
 
 type HistoryChatItemProps = {
   id: string;
@@ -10,10 +10,11 @@ type HistoryChatItemProps = {
   href: string;
   active: boolean;
   onSelect: () => void;
+  onRename: () => void;
   onDelete: () => void;
 };
 
-export function HistoryChatItem({ title, href, active, onSelect, onDelete }: HistoryChatItemProps) {
+export function HistoryChatItem({ title, href, active, onSelect, onRename, onDelete }: HistoryChatItemProps) {
   return (
     <Group gap={0} wrap="nowrap" style={{ minWidth: 0 }}>
       <NavLink
@@ -37,6 +38,12 @@ export function HistoryChatItem({ title, href, active, onSelect, onDelete }: His
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+          <Menu.Item
+            leftSection={<IconEdit size={16} />}
+            onClick={(event) => { event.stopPropagation(); onRename(); }}
+          >
+            Rename chat
+          </Menu.Item>
           <Menu.Item
             color="red"
             leftSection={<IconTrash size={16} />}

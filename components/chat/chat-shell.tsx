@@ -49,6 +49,7 @@ import { CreateFolderModal } from "@/components/chat/create-folder-modal";
 import { HistoryFolderItem } from "@/components/chat/history-folder-item";
 import { RenameFolderModal } from "@/components/chat/rename-folder-modal";
 import { DeleteFolderModal } from "@/components/chat/delete-folder-modal";
+import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 
 type Folder = {
   id: string;
@@ -104,6 +105,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
     { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[]
   >([]);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
+  const [chatToRename, setChatToRename] = useState<Chat | null>(null);
   const [deletingChat, setDeletingChat] = useState(false);
   const [createFolderOpened, setCreateFolderOpened] = useState(false);
   const [folderToRename, setFolderToRename] = useState<Folder | null>(null);
@@ -529,6 +531,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
                             title={chat.title}
                             active={pathname === `/chat/${chat.id}`}
                             onSelect={closeNavbar}
+                            onRename={() => setChatToRename(chat)}
                             onDelete={() => setChatToDelete(chat)}
                           />
                         ))}
@@ -556,6 +559,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
                       title={chat.title}
                       active={pathname === `/chat/${chat.id}`}
                       onSelect={closeNavbar}
+                      onRename={() => setChatToRename(chat)}
                       onDelete={() => setChatToDelete(chat)}
                     />
                   ))}
@@ -755,6 +759,12 @@ export function ChatShell({ chatId }: ChatShellProps) {
         onRenamed={(folder) => { setFolders((current) => current.map((item) => item.id === folder.id ? { ...item, ...folder } : item)); setFolderToRename(null); notifications.show({ color: "green", title: "Folder renamed", message: `Folder renamed to “${folder.name}”.` }); }} /> : null}
       <DeleteFolderModal opened={folderToDelete !== null} deleting={deletingFolder}
         onClose={() => setFolderToDelete(null)} onConfirm={() => void deleteFolder()} />
+      {chatToRename ? <RenameChatModal chat={chatToRename} onClose={() => setChatToRename(null)}
+        onRenamed={(renamed) => {
+          setChats((current) => current.map((chat) => chat.id === renamed.id ? { ...chat, title: renamed.title } : chat));
+          setChatToRename(null);
+          notifications.show({ color: "green", title: "Chat renamed", message: `Chat renamed to “${renamed.title}”.` });
+        }} /> : null}
     </AppShell>
   );
 }

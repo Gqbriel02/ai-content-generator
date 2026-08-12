@@ -183,6 +183,19 @@ export async function updateChatRating(profileId: string, chatId: string, rating
   return data;
 }
 
+export async function renameOwnedChat(profileId: string, chatId: string, title: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("chats")
+    .update({ title, updated_at: new Date().toISOString() })
+    .eq("id", chatId)
+    .eq("profile_id", profileId)
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function getChatById(profileId: string, chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase

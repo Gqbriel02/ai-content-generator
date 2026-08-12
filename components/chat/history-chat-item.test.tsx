@@ -38,6 +38,7 @@ describe("HistoryChatItem", () => {
 
   it("opens its menu without selecting the chat and invokes deletion only from the menu item", async () => {
     const onSelect = vi.fn();
+    const onRename = vi.fn();
     const onDelete = vi.fn();
     await act(async () => {
       root.render(
@@ -48,6 +49,7 @@ describe("HistoryChatItem", () => {
             href="/chat/chat-id"
             active={false}
             onSelect={onSelect}
+            onRename={onRename}
             onDelete={onDelete}
           />
         </MantineProvider>,
@@ -63,9 +65,17 @@ describe("HistoryChatItem", () => {
     });
 
     expect(onSelect).not.toHaveBeenCalled();
+    const items = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
+    const renameItem = items.find((item) => item.textContent?.includes("Rename chat"));
     const deleteItem = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")]
       .find((item) => item.textContent?.includes("Delete chat"));
+    expect(renameItem).toBeDefined();
     expect(deleteItem).toBeDefined();
+    expect(items.indexOf(renameItem!)).toBeLessThan(items.indexOf(deleteItem!));
+
+    await act(async () => renameItem!.click());
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
 
     await act(async () => deleteItem!.click());
     expect(onDelete).toHaveBeenCalledTimes(1);
@@ -82,6 +92,7 @@ describe("HistoryChatItem", () => {
             href="/chat/selected-chat"
             active
             onSelect={vi.fn()}
+            onRename={vi.fn()}
             onDelete={vi.fn()}
           />
         </MantineProvider>,
