@@ -172,6 +172,28 @@ export async function renameOwnedChat(profileId: string, chatId: string, title: 
   return data;
 }
 
+export async function moveOwnedChat(input: {
+  profileId: string;
+  chatId: string;
+  folderId: string | null;
+}) {
+  if (input.folderId !== null) {
+    const folder = await findFolderById(input.profileId, input.folderId);
+    if (!folder) return null;
+  }
+
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("chats")
+    .update({ folder_id: input.folderId })
+    .eq("id", input.chatId)
+    .eq("profile_id", input.profileId)
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function getChatById(profileId: string, chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase

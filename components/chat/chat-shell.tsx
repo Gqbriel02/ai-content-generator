@@ -24,6 +24,16 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
   IconFolderPlus,
   IconLogout,
   IconMessagePlus,
@@ -50,6 +60,8 @@ import { HistoryFolderItem } from "@/components/chat/history-folder-item";
 import { RenameFolderModal } from "@/components/chat/rename-folder-modal";
 import { DeleteFolderModal } from "@/components/chat/delete-folder-modal";
 import { RenameChatModal } from "@/components/chat/rename-chat-modal";
+import { MoveChatModal } from "@/components/chat/move-chat-modal";
+import { NoFolderDropZone } from "@/components/chat/no-folder-drop-zone";
 
 type Folder = {
   id: string;
@@ -107,6 +119,10 @@ export function ChatShell({ chatId }: ChatShellProps) {
   >([]);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
+  const [chatToMove, setChatToMove] = useState<Chat | null>(null);
+  const [draggedChat, setDraggedChat] = useState<Chat | null>(null);
+  const [movingChatIds, setMovingChatIds] = useState<Set<string>>(() => new Set());
+  const [folderExpandSignals, setFolderExpandSignals] = useState<Record<string, number>>({});
   const [deletingChat, setDeletingChat] = useState(false);
   const [createFolderOpened, setCreateFolderOpened] = useState(false);
   const [folderToRename, setFolderToRename] = useState<Folder | null>(null);
@@ -114,6 +130,66 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [deletingFolder, setDeletingFolder] = useState(false);
   const deleteRequestPending = useRef(false);
   const folderDeletePending = useRef(false);
+  const moveRequestsPending = useRef(new Set<string>());
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  async function moveChatToFolder(chat: Chat, destinationFolderId: string | null) {
+    if (chat.folder_id === destinationFolderId || moveRequestsPending.current.has(chat.id)) return false;
+    moveRequestsPending.current.add(chat.id);
+    setMovingChatIds((current) => new Set(current).add(chat.id));
+    try {
+      const response = await fetch(`/api/chats/${chat.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: destinationFolderId }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error?.message ?? "The chat could not be moved.");
+      setChats((current) => current.map((item) => item.id === chat.id
+        ? { ...item, folder_id: json.data.folder_id }
+        : item));
+      if (activeChatId === chat.id) setActiveChatFolderId(json.data.folder_id);
+      if (destinationFolderId) {
+        setFolderExpandSignals((current) => ({
+          ...current,
+          [destinationFolderId]: (current[destinationFolderId] ?? 0) + 1,
+        }));
+      }
+      return true;
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Chat not moved",
+        message: error instanceof Error ? error.message : "The chat could not be moved. Please try again.",
+      });
+      await fetchBootstrap(search, sort);
+      return false;
+    } finally {
+      moveRequestsPending.current.delete(chat.id);
+      setMovingChatIds((current) => {
+        const next = new Set(current);
+        next.delete(chat.id);
+        return next;
+      });
+    }
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    const chatId = event.active.data.current?.chatId;
+    setDraggedChat(chats.find((chat) => chat.id === chatId) ?? null);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const chat = draggedChat;
+    setDraggedChat(null);
+    if (!chat || !event.over || !String(event.over.id).startsWith("folder:")) return;
+    const folderId = event.over.data.current?.folderId;
+    if (folderId !== null && typeof folderId !== "string") return;
+    void moveChatToFolder(chat, folderId);
+  }
 
   async function fetchBootstrap(nextSearch = search, nextSort = sort) {
     setLoading(true);
@@ -408,6 +484,8 @@ export function ChatShell({ chatId }: ChatShellProps) {
   }
 
   return (
+    <DndContext sensors={dndSensors} autoScroll onDragStart={handleDragStart}
+      onDragCancel={() => setDraggedChat(null)} onDragEnd={handleDragEnd}>
     <AppShell
       header={{ height: 60 }}
       navbar={{
@@ -530,7 +608,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
             >
               <Stack gap="sm" pr="xs">
                 {folders.map((folder) => (
-                  <HistoryFolderItem key={folder.id} name={folder.name}
+                  <HistoryFolderItem key={`${folder.id}:${folderExpandSignals[folder.id] ?? 0}`} name={folder.name} folderId={folder.id}
                     onNewChat={() => createDraft(folder.id)} onRename={() => setFolderToRename(folder)}
                     onDelete={() => setFolderToDelete(folder)}>
                       {chats
@@ -542,8 +620,11 @@ export function ChatShell({ chatId }: ChatShellProps) {
                             href={chatHref(chat.id)}
                             title={chat.title}
                             active={pathname === `/chat/${chat.id}`}
+                            folderId={chat.folder_id}
+                            moving={movingChatIds.has(chat.id)}
                             onSelect={closeNavbar}
                             onRename={() => setChatToRename(chat)}
+                            onMove={() => setChatToMove(chat)}
                             onDelete={() => setChatToDelete(chat)}
                           />
                         ))}
@@ -552,8 +633,9 @@ export function ChatShell({ chatId }: ChatShellProps) {
               </Stack>
             </ScrollArea.Autosize>
           ) : null}
-          {!loading && !historyError ? <Text fw={600}>No Folder</Text> : null}
           {!loading && !historyError ? (
+            <NoFolderDropZone>
+            <Text fw={600} px={4} py={2}>No Folder</Text>
             <ScrollArea
               type="auto"
               offsetScrollbars
@@ -570,13 +652,17 @@ export function ChatShell({ chatId }: ChatShellProps) {
                       href={chatHref(chat.id)}
                       title={chat.title}
                       active={pathname === `/chat/${chat.id}`}
+                      folderId={chat.folder_id}
+                      moving={movingChatIds.has(chat.id)}
                       onSelect={closeNavbar}
                       onRename={() => setChatToRename(chat)}
+                      onMove={() => setChatToMove(chat)}
                       onDelete={() => setChatToDelete(chat)}
                     />
                   ))}
               </Stack>
             </ScrollArea>
+            </NoFolderDropZone>
           ) : null}
         </Stack>
       </AppShell.Navbar>
@@ -777,6 +863,15 @@ export function ChatShell({ chatId }: ChatShellProps) {
           setChatToRename(null);
           notifications.show({ color: "green", title: "Chat renamed", message: `Chat renamed to “${renamed.title}”.` });
         }} /> : null}
+      {chatToMove ? <MoveChatModal chat={chatToMove} folders={folders} onClose={() => setChatToMove(null)}
+        onFolderCreated={(folder) => setFolders((current) => [...current, folder])}
+        onMove={moveChatToFolder} /> : null}
     </AppShell>
+    <DragOverlay dropAnimation={null}>
+      {draggedChat ? <Box px="sm" py={6} bg="white" style={{ borderRadius: 6, boxShadow: "var(--mantine-shadow-md)" }}>
+        <Text size="sm" maw={240} truncate>{draggedChat.title}</Text>
+      </Box> : null}
+    </DragOverlay>
+    </DndContext>
   );
 }

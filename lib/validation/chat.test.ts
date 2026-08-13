@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { createChatSchema, createMessageSchema, historyQuerySchema, ratingSchema } from "./chat";
+import { createChatSchema, createMessageSchema, historyQuerySchema, ratingSchema, updateChatSchema } from "./chat";
+
+describe("updateChatSchema", () => {
+  const folderId = "d442fea7-d74e-4fd2-a9f3-b06f55632a3f";
+
+  it.each([{ title: "Renamed" }, { folderId }, { folderId: null }])("accepts one supported update: %o", (value) => {
+    expect(updateChatSchema.safeParse(value).success).toBe(true);
+  });
+
+  it.each([{ title: "Rename", folderId }, { rating: 1 }, { folder_id: folderId }, {}])(
+    "rejects mixed or unsupported updates: %o",
+    (value) => expect(updateChatSchema.safeParse(value).success).toBe(false),
+  );
+});
 
 describe("createChatSchema", () => {
   it("creates a chat from its current fields", () => {

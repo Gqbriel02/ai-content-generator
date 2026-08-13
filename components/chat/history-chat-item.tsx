@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { ActionIcon, Group, Menu, NavLink, Text, Tooltip } from "@mantine/core";
-import { IconDotsVertical, IconEdit, IconTrash } from "@tabler/icons-react";
+import { IconDotsVertical, IconEdit, IconGripVertical, IconFolderSymlink, IconTrash } from "@tabler/icons-react";
+import { useDraggable } from "@dnd-kit/core";
 
 type HistoryChatItemProps = {
   id: string;
@@ -11,12 +12,27 @@ type HistoryChatItemProps = {
   active: boolean;
   onSelect: () => void;
   onRename: () => void;
+  onMove?: () => void;
   onDelete: () => void;
+  folderId?: string | null;
+  moving?: boolean;
 };
 
-export function HistoryChatItem({ title, href, active, onSelect, onRename, onDelete }: HistoryChatItemProps) {
+export function HistoryChatItem({ id, title, href, active, onSelect, onRename, onMove = () => {}, onDelete, folderId = null, moving = false }: HistoryChatItemProps) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `chat:${id}`,
+    data: { chatId: id, title, folderId },
+    disabled: moving,
+  });
   return (
-    <Group gap={0} wrap="nowrap" style={{ minWidth: 0 }}>
+    <Group ref={setNodeRef} gap={0} wrap="nowrap" data-chat-id={id}
+      style={{ minWidth: 0, opacity: isDragging || moving ? 0.5 : 1 }}>
+      <Tooltip label="Drag to move" disabled={isDragging}>
+        <ActionIcon aria-label={`Drag ${title}`} size="sm" variant="subtle" color="gray"
+          {...attributes} {...listeners} onClick={(event) => event.preventDefault()}>
+          <IconGripVertical size={14} />
+        </ActionIcon>
+      </Tooltip>
       <NavLink
         component={Link}
         href={href}
@@ -56,6 +72,11 @@ export function HistoryChatItem({ title, href, active, onSelect, onRename, onDel
           >
             Rename chat
           </Menu.Item>
+          <Menu.Item leftSection={<IconFolderSymlink size={16} />}
+            onClick={(event) => { event.stopPropagation(); onMove(); }}>
+            Move to folder
+          </Menu.Item>
+          <Menu.Divider />
           <Menu.Item
             color="red"
             leftSection={<IconTrash size={16} />}

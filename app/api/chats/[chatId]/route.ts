@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { createServerSupabaseClient } from "@/lib/db/supabase";
 import { fail, ok } from "@/lib/http/responses";
 import { updateChatSchema } from "@/lib/validation/chat";
-import { deleteOwnedChat, renameOwnedChat } from "@/lib/db/chat-repo";
+import { deleteOwnedChat, moveOwnedChat, renameOwnedChat } from "@/lib/db/chat-repo";
 import { deleteAttachmentObjects } from "@/lib/storage/attachments";
 import { z } from "zod";
 
@@ -40,12 +40,18 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/chats/[cha
   }
 
   try {
-    const chat = await renameOwnedChat(auth.session.profileId, chatId, parsed.data.title);
+    const chat = "title" in parsed.data
+      ? await renameOwnedChat(auth.session.profileId, chatId, parsed.data.title)
+      : await moveOwnedChat({
+          profileId: auth.session.profileId,
+          chatId,
+          folderId: parsed.data.folderId,
+        });
     if (!chat) return fail("Chat not found.", 404);
     return ok(chat);
   } catch (error) {
-    console.error("Unable to rename chat.", error);
-    return fail("The chat could not be renamed. Please try again.", 500);
+    console.error("Unable to update chat.", error);
+    return fail("The chat could not be updated. Please try again.", 500);
   }
 }
 

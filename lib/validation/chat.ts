@@ -17,9 +17,14 @@ export const createChatSchema = z.object({
   folderId: z.string().uuid().nullable().optional(),
 }).strict();
 
-export const updateChatSchema = z.object({
-  title: z.string().trim().min(1).max(CHAT_TITLE_MAX_LENGTH),
-}).strict();
+export const updateChatSchema = z.union([
+  z.object({
+    title: z.string().trim().min(1).max(CHAT_TITLE_MAX_LENGTH),
+  }).strict(),
+  z.object({
+    folderId: z.string().uuid().nullable(),
+  }).strict(),
+]);
 
 export const HISTORY_SEARCH_MAX_LENGTH = 200;
 

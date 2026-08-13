@@ -1,23 +1,68 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireSession, deleteOwnedChat, deleteAttachmentObjects } = vi.hoisted(() => ({
+const { requireSession, deleteOwnedChat, deleteAttachmentObjects, renameOwnedChat, moveOwnedChat } = vi.hoisted(() => ({
   requireSession: vi.fn(),
   deleteOwnedChat: vi.fn(),
   deleteAttachmentObjects: vi.fn(),
+  renameOwnedChat: vi.fn(),
+  moveOwnedChat: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-session", () => ({ requireSession }));
-vi.mock("@/lib/db/chat-repo", () => ({ deleteOwnedChat }));
+vi.mock("@/lib/db/chat-repo", () => ({ deleteOwnedChat, renameOwnedChat, moveOwnedChat }));
 vi.mock("@/lib/storage/attachments", () => ({ deleteAttachmentObjects }));
 vi.mock("@/lib/db/supabase", () => ({ createServerSupabaseClient: vi.fn() }));
 
-import { DELETE } from "./route";
+import { DELETE, PATCH } from "./route";
 
 const CHAT_ID = "9b463696-7502-44e0-bd23-35ab3b0ce147";
 
 function context(chatId = CHAT_ID) {
   return { params: Promise.resolve({ chatId }) } as RouteContext<"/api/chats/[chatId]">;
 }
+
+describe("PATCH /api/chats/[chatId]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireSession.mockResolvedValue({ session: { profileId: "owner-profile" } });
+  });
+
+  it("preserves rename behavior", async () => {
+    renameOwnedChat.mockResolvedValue({ id: CHAT_ID, title: "Renamed" });
+    const response = await PATCH(new Request("http://localhost", {
+      method: "PATCH", body: JSON.stringify({ title: "Renamed" }),
+    }), context());
+    expect(response!.status).toBe(200);
+    expect(renameOwnedChat).toHaveBeenCalledWith("owner-profile", CHAT_ID, "Renamed");
+    expect(moveOwnedChat).not.toHaveBeenCalled();
+  });
+
+  it.each(["d442fea7-d74e-4fd2-a9f3-b06f55632a3f", null])("moves using authenticated ownership with folderId %s", async (folderId) => {
+    moveOwnedChat.mockResolvedValue({ id: CHAT_ID, folder_id: folderId });
+    const response = await PATCH(new Request("http://localhost", {
+      method: "PATCH", body: JSON.stringify({ folderId }),
+    }), context());
+    expect(response!.status).toBe(200);
+    expect(moveOwnedChat).toHaveBeenCalledWith({ profileId: "owner-profile", chatId: CHAT_ID, folderId });
+  });
+
+  it("rejects arbitrary or mixed fields", async () => {
+    const response = await PATCH(new Request("http://localhost", {
+      method: "PATCH", body: JSON.stringify({ title: "Rename", folderId: null, rating: 1 }),
+    }), context());
+    expect(response!.status).toBe(400);
+    expect(renameOwnedChat).not.toHaveBeenCalled();
+    expect(moveOwnedChat).not.toHaveBeenCalled();
+  });
+
+  it("uses the same not-found response for an unowned chat or destination", async () => {
+    moveOwnedChat.mockResolvedValue(null);
+    const response = await PATCH(new Request("http://localhost", {
+      method: "PATCH", body: JSON.stringify({ folderId: null }),
+    }), context());
+    expect(response!.status).toBe(404);
+  });
+});
 
 describe("DELETE /api/chats/[chatId]", () => {
   beforeEach(() => {

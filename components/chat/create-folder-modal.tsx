@@ -13,7 +13,7 @@ export type CreatedFolder = {
 type CreateFolderModalProps = {
   opened: boolean;
   onClose: () => void;
-  onCreated: (folder: CreatedFolder) => void;
+  onCreated: (folder: CreatedFolder) => void | Promise<void>;
 };
 
 export function CreateFolderModal({ opened, onClose, onCreated }: CreateFolderModalProps) {
@@ -48,7 +48,7 @@ export function CreateFolderModal({ opened, onClose, onCreated }: CreateFolderMo
         throw new Error(json?.error?.message ?? "The folder could not be created.");
       }
 
-      onCreated(json.data);
+      await onCreated(json.data);
       setName("");
       onClose();
       notifications.show({

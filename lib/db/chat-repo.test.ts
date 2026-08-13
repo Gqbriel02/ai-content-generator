@@ -15,7 +15,63 @@ import {
   deleteOwnedChat,
   updateChatRating,
   renameOwnedChat,
+  moveOwnedChat,
 } from "./chat-repo";
+
+describe("moveOwnedChat", () => {
+  beforeEach(() => from.mockReset());
+
+  it("moves an owned chat to No Folder without changing any other field", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "chat-id", folder_id: null }, error: null });
+    const select = vi.fn(() => ({ maybeSingle }));
+    const profileEq = vi.fn(() => ({ select }));
+    const idEq = vi.fn(() => ({ eq: profileEq }));
+    const update = vi.fn(() => ({ eq: idEq }));
+    from.mockReturnValueOnce({ update });
+
+    await expect(moveOwnedChat({ profileId: "owner", chatId: "chat-id", folderId: null }))
+      .resolves.toEqual({ id: "chat-id", folder_id: null });
+    expect(update).toHaveBeenCalledWith({ folder_id: null });
+    expect(profileEq).toHaveBeenCalledWith("profile_id", "owner");
+  });
+
+  it("validates destination ownership before moving between folders", async () => {
+    const folderSingle = vi.fn().mockResolvedValue({ data: { id: "folder-b" }, error: null });
+    const folderProfileEq = vi.fn(() => ({ maybeSingle: folderSingle }));
+    const folderIdEq = vi.fn(() => ({ eq: folderProfileEq }));
+    const chatSingle = vi.fn().mockResolvedValue({ data: { id: "chat-id", folder_id: "folder-b" }, error: null });
+    const select = vi.fn(() => ({ maybeSingle: chatSingle }));
+    const chatProfileEq = vi.fn(() => ({ select }));
+    const chatIdEq = vi.fn(() => ({ eq: chatProfileEq }));
+    const update = vi.fn(() => ({ eq: chatIdEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ eq: folderIdEq })) }).mockReturnValueOnce({ update });
+
+    await expect(moveOwnedChat({ profileId: "owner", chatId: "chat-id", folderId: "folder-b" }))
+      .resolves.toMatchObject({ folder_id: "folder-b" });
+    expect(folderProfileEq).toHaveBeenCalledWith("profile_id", "owner");
+    expect(update).toHaveBeenCalledWith({ folder_id: "folder-b" });
+  });
+
+  it("does not update when the destination belongs to another user", async () => {
+    const folderSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const folderProfileEq = vi.fn(() => ({ maybeSingle: folderSingle }));
+    const folderIdEq = vi.fn(() => ({ eq: folderProfileEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ eq: folderIdEq })) });
+    await expect(moveOwnedChat({ profileId: "owner", chatId: "chat-id", folderId: "foreign-folder" }))
+      .resolves.toBeNull();
+    expect(from).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not move another user's chat", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const select = vi.fn(() => ({ maybeSingle }));
+    const profileEq = vi.fn(() => ({ select }));
+    const idEq = vi.fn(() => ({ eq: profileEq }));
+    from.mockReturnValueOnce({ update: vi.fn(() => ({ eq: idEq })) });
+    await expect(moveOwnedChat({ profileId: "owner", chatId: "foreign-chat", folderId: null }))
+      .resolves.toBeNull();
+  });
+});
 
 describe("renameOwnedChat", () => {
   it("updates only the title of the owning profile's chat", async () => {

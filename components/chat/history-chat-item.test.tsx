@@ -39,6 +39,7 @@ describe("HistoryChatItem", () => {
   it("opens its menu without selecting the chat and invokes deletion only from the menu item", async () => {
     const onSelect = vi.fn();
     const onRename = vi.fn();
+    const onMove = vi.fn();
     const onDelete = vi.fn();
     await act(async () => {
       root.render(
@@ -50,6 +51,7 @@ describe("HistoryChatItem", () => {
             active={false}
             onSelect={onSelect}
             onRename={onRename}
+            onMove={onMove}
             onDelete={onDelete}
           />
         </MantineProvider>,
@@ -69,12 +71,20 @@ describe("HistoryChatItem", () => {
     const renameItem = items.find((item) => item.textContent?.includes("Rename chat"));
     const deleteItem = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")]
       .find((item) => item.textContent?.includes("Delete chat"));
+    const moveItem = items.find((item) => item.textContent?.includes("Move to folder"));
     expect(renameItem).toBeDefined();
     expect(deleteItem).toBeDefined();
+    expect(moveItem).toBeDefined();
     expect(items.indexOf(renameItem!)).toBeLessThan(items.indexOf(deleteItem!));
+    expect(items.indexOf(renameItem!)).toBeLessThan(items.indexOf(moveItem!));
+    expect(items.indexOf(moveItem!)).toBeLessThan(items.indexOf(deleteItem!));
 
     await act(async () => renameItem!.click());
     expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await act(async () => moveItem!.click());
+    expect(onMove).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
 
     await act(async () => deleteItem!.click());

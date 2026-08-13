@@ -3,6 +3,7 @@
 import { ActionIcon, Box, Collapse, Group, Menu, Stack, Text, Tooltip } from "@mantine/core";
 import { IconChevronDown, IconChevronUp, IconDotsVertical, IconEdit, IconMessagePlus, IconTrash } from "@tabler/icons-react";
 import { Children, useId, useState, type ReactNode } from "react";
+import { useDroppable } from "@dnd-kit/core";
 
 type Props = {
   name: string;
@@ -10,15 +11,19 @@ type Props = {
   onNewChat: () => void;
   onRename: () => void;
   onDelete: () => void;
+  folderId?: string;
 };
 
-export function HistoryFolderItem({ name, children, onNewChat, onRename, onDelete }: Props) {
+export function HistoryFolderItem({ name, children, onNewChat, onRename, onDelete, folderId = name }: Props) {
   const [expanded, setExpanded] = useState(true);
+  const { setNodeRef, isOver } = useDroppable({ id: `folder:${folderId}`, data: { folderId } });
   const contentId = useId();
   const hasChats = Children.count(children) > 0;
-
   return (
-    <Box p={8} style={{ border: "1px solid var(--mantine-color-gray-3)", borderRadius: 8 }}>
+    <Box ref={setNodeRef} p={8} data-folder-drop-id={folderId} style={{
+      border: `1px solid ${isOver ? "var(--mantine-color-blue-5)" : "var(--mantine-color-gray-3)"}`,
+      background: isOver ? "var(--mantine-color-blue-0)" : undefined, borderRadius: 8,
+    }}>
       <Group gap={4} wrap="nowrap">
         <Text size="sm" truncate style={{ flex: 1, minWidth: 0 }}>{name}</Text>
         <Tooltip label={hasChats ? (expanded ? "Collapse folder" : "Expand folder") : "No chats in this folder"}>
