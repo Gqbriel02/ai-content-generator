@@ -601,12 +601,23 @@ export function ChatShell({ chatId }: ChatShellProps) {
           {!loading && !historyError ? (
             <ScrollArea.Autosize
               type="auto"
+              scrollbars="y"
               mah="30dvh"
               offsetScrollbars
-              viewportProps={{ "aria-label": "Folders", tabIndex: 0 }}
-              style={{ flexShrink: 1, minHeight: 0 }}
+              viewportProps={{ "aria-label": "Folders", tabIndex: 0, style: { overflowX: "hidden" } }}
+              classNames={{ content: "folders-scroll-content" }}
+              styles={{
+                content: {
+                  display: "block",
+                  width: "100%",
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                },
+              }}
+              style={{ width: "100%", minWidth: 0, maxWidth: "100%", flexShrink: 1, minHeight: 0 }}
             >
-              <Stack gap="sm" pr="xs">
+              <Stack gap="sm" pr="xs" style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
                 {folders.map((folder) => (
                   <HistoryFolderItem key={`${folder.id}:${folderExpandSignals[folder.id] ?? 0}`} name={folder.name} folderId={folder.id}
                     onNewChat={() => createDraft(folder.id)} onRename={() => setFolderToRename(folder)}

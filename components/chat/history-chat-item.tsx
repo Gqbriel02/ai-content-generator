@@ -26,10 +26,10 @@ export function HistoryChatItem({ id, title, href, active, onSelect, onRename, o
   });
   return (
     <Group ref={setNodeRef} gap={0} wrap="nowrap" data-chat-id={id}
-      style={{ minWidth: 0, opacity: isDragging || moving ? 0.5 : 1 }}>
+      style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden", opacity: isDragging || moving ? 0.5 : 1 }}>
       <Tooltip label="Drag to move" disabled={isDragging}>
         <ActionIcon aria-label={`Drag ${title}`} size="sm" variant="subtle" color="gray"
-          {...attributes} {...listeners} onClick={(event) => event.preventDefault()}>
+          {...attributes} {...listeners} onClick={(event) => event.preventDefault()} style={{ flexShrink: 0 }}>
           <IconGripVertical size={14} />
         </ActionIcon>
       </Tooltip>
@@ -51,7 +51,7 @@ export function HistoryChatItem({ id, title, href, active, onSelect, onRename, o
             </Text>
           </Tooltip>
         )}
-        style={{ flex: 1, minWidth: 0 }}
+        style={{ flex: "1 1 0", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}
       />
       <Menu position="bottom-end" withinPortal shadow="md">
         <Menu.Target>
@@ -61,6 +61,7 @@ export function HistoryChatItem({ id, title, href, active, onSelect, onRename, o
             size="sm"
             variant="subtle"
             color="gray"
+            style={{ flexShrink: 0 }}
           >
             <IconDotsVertical size={16} />
           </ActionIcon>

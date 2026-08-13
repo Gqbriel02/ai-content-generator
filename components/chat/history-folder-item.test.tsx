@@ -96,4 +96,27 @@ describe("HistoryFolderItem", () => {
     expect(document.body.textContent).not.toContain("Collapse folder");
     expect(document.body.textContent).not.toContain("Expand folder");
   });
+
+  it("constrains a long folder name, exposes its full tooltip value, and keeps actions separate", async () => {
+    const name = "Dissertation Research Documents and Artificial Intelligence Experiments";
+    await render([name]);
+
+    const card = document.querySelector<HTMLElement>(`[data-folder-drop-id="${name}"]`)!;
+    const folderName = document.querySelector<HTMLElement>(`[data-folder-name="${name}"]`)!;
+    expect(card.style.width).toBe("100%");
+    expect(card.style.minWidth).toBe("0px");
+    expect(card.style.maxWidth).toBe("100%");
+    expect(card.style.overflow).toBe("hidden");
+    expect(folderName.style.overflow).toBe("hidden");
+    expect(folderName.style.textOverflow).toBe("ellipsis");
+    expect(folderName.style.whiteSpace).toBe("nowrap");
+    expect(folderName.getAttribute("data-tooltip-label")).toBe(name);
+
+    const expand = document.querySelector(`[aria-label="Collapse ${name}"]`)!;
+    const newChat = document.querySelector(`[aria-label="New chat in ${name}"]`)!;
+    const menu = document.querySelector(`[aria-label="More options for ${name}"]`)!;
+    expect(folderName.contains(expand)).toBe(false);
+    expect(folderName.contains(newChat)).toBe(false);
+    expect(folderName.contains(menu)).toBe(false);
+  });
 });

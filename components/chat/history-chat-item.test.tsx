@@ -137,6 +137,14 @@ describe("HistoryChatItem", () => {
     expect(titleElement.style.whiteSpace).toBe("nowrap");
 
     expect(titleElement.getAttribute("data-tooltip-label")).toBe(title);
+
+    const row = document.querySelector<HTMLElement>('[data-chat-id="long-title-chat"]')!;
+    expect(row.style.width).toBe("100%");
+    expect(row.style.minWidth).toBe("0px");
+    expect(row.style.maxWidth).toBe("100%");
+    expect(row.style.overflow).toBe("hidden");
+    expect(document.querySelector('[aria-label^="Drag Understanding"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="More options"]')).not.toBeNull();
   });
 
   it("still selects the chat when its title is clicked", async () => {
