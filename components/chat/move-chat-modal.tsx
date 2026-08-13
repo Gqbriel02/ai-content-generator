@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Button, Group, Modal, Radio, Stack, Text } from "@mantine/core";
+import { useCallback, useRef, useState } from "react";
+import { Box, Button, Group, Modal, Radio, ScrollArea, Stack, Text, Tooltip } from "@mantine/core";
 import { IconFolderPlus } from "@tabler/icons-react";
 import { CreateFolderModal, type CreatedFolder } from "./create-folder-modal";
 
@@ -17,6 +17,9 @@ type Props = {
 };
 
 const NO_FOLDER = "__no_folder__";
+const FOLDER_ROW_HEIGHT = 36;
+const VISIBLE_FOLDER_ROWS = 4;
+const FOLDER_LIST_MAX_HEIGHT = FOLDER_ROW_HEIGHT * VISIBLE_FOLDER_ROWS;
 
 export function MoveChatModal({ chat, folders, onClose, onFolderCreated, onMove }: Props) {
   const [destination, setDestination] = useState(chat.folder_id ?? NO_FOLDER);
@@ -28,6 +31,10 @@ export function MoveChatModal({ chat, folders, onClose, onFolderCreated, onMove 
     : "No Folder";
   const destinationId = destination === NO_FOLDER ? null : destination;
   const changed = destinationId !== chat.folder_id;
+
+  const bringSelectedFolderIntoView = useCallback((node: HTMLDivElement | null) => {
+    node?.scrollIntoView({ block: "nearest" });
+  }, []);
 
   async function submitMove(folderId = destinationId) {
     if (pending.current || folderId === chat.folder_id) return false;
@@ -53,7 +60,62 @@ export function MoveChatModal({ chat, folders, onClose, onFolderCreated, onMove 
           <Radio.Group value={destination} onChange={setDestination} aria-label="Destination folder">
             <Stack gap="xs">
               <Radio value={NO_FOLDER} label="No Folder" disabled={moving} />
-              {folders.map((folder) => <Radio key={folder.id} value={folder.id} label={folder.name} disabled={moving} />)}
+              {folders.length ? (
+                <ScrollArea.Autosize
+                  type="auto"
+                  scrollbars="y"
+                  mah={FOLDER_LIST_MAX_HEIGHT}
+                  offsetScrollbars="present"
+                  data-folder-scroll-area
+                  viewportProps={{
+                    "aria-label": "Existing folders",
+                    style: { overflowX: "hidden" },
+                  }}
+                  styles={{
+                    root: { width: "100%", minWidth: 0, maxWidth: "100%" },
+                    content: {
+                      display: "block",
+                      width: "100%",
+                      minWidth: 0,
+                      maxWidth: "100%",
+                      boxSizing: "border-box",
+                    },
+                  }}
+                >
+                  <Stack gap={0} style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}>
+                    {folders.map((folder) => (
+                      <Box
+                        key={folder.id}
+                        ref={folder.id === chat.folder_id ? bringSelectedFolderIntoView : undefined}
+                        data-folder-destination={folder.id}
+                        h={FOLDER_ROW_HEIGHT}
+                        style={{
+                          width: "100%",
+                          minWidth: 0,
+                          maxWidth: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <Radio
+                          value={folder.id}
+                          disabled={moving}
+                          style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}
+                          label={(
+                            <Tooltip label={folder.name} multiline maw={360} withinPortal>
+                              <Text truncate data-folder-destination-label={folder.name}
+                                style={{ display: "block", width: "100%", minWidth: 0 }}>
+                                {folder.name}
+                              </Text>
+                            </Tooltip>
+                          )}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                </ScrollArea.Autosize>
+              ) : null}
             </Stack>
           </Radio.Group>
           <Button variant="subtle" leftSection={<IconFolderPlus size={16} />} onClick={() => setCreating(true)}
