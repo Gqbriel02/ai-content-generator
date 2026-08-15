@@ -45,12 +45,9 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { marked } from "marked";
-import DOMPurify from "isomorphic-dompurify";
 import {
   ANSWER_MODES,
   DEFAULT_ANSWER_MODE,
-  getAnswerModeLabel,
   isAnswerMode,
   type AnswerMode,
 } from "@/lib/ai/answer-modes";
@@ -63,6 +60,7 @@ import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { MoveChatModal } from "@/components/chat/move-chat-modal";
 import { NoFolderDropZone } from "@/components/chat/no-folder-drop-zone";
 import { deriveHistoryTree } from "@/components/chat/history-tree";
+import { MessageCard } from "@/components/chat/message-card";
 
 type Folder = {
   id: string;
@@ -88,10 +86,14 @@ type ChatShellProps = {
   chatId?: string;
 };
 
-function MarkdownView({ value }: { value: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(marked.parse(value, { breaks: true }) as string), [value]);
-  return <Box dangerouslySetInnerHTML={{ __html: html }} />;
-}
+type PendingExchange = {
+  requestId: number;
+  ownerKey: string;
+  content: string;
+  answerMode: AnswerMode;
+  attachments: { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[];
+  status: "loading" | "error";
+};
 
 export function ChatShell({ chatId }: ChatShellProps) {
   const router = useRouter();
@@ -103,6 +105,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [pendingExchange, setPendingExchange] = useState<PendingExchange | null>(null);
   const [draftFolderId, setDraftFolderId] = useState<string | null>(null);
   const [rating, setRating] = useState<1 | -1 | null>(null);
   const [activeChatFolderId, setActiveChatFolderId] = useState<string | null>(null);
@@ -132,12 +135,23 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const deleteRequestPending = useRef(false);
   const folderDeletePending = useRef(false);
   const moveRequestsPending = useRef(new Set<string>());
+  const requestSequence = useRef(0);
+  const sendRequestPending = useRef(false);
+  const conversationEndRef = useRef<HTMLDivElement>(null);
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
   );
   const historyTree = useMemo(() => deriveHistoryTree(folders, chats, search), [folders, chats, search]);
   const hasSearchResults = historyTree.visibleFolders.length > 0 || historyTree.noFolderChats.length > 0;
+  const conversationOwnerKey = activeChatId ?? `draft:${draftFolderId ?? "no-folder"}`;
+  const activeOwnerRef = useRef(conversationOwnerKey);
+  activeOwnerRef.current = conversationOwnerKey;
+  const visiblePendingExchange = pendingExchange?.ownerKey === conversationOwnerKey ? pendingExchange : null;
+
+  useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [messages, visiblePendingExchange?.status, visiblePendingExchange?.requestId]);
 
   async function moveChatToFolder(chat: Chat, destinationFolderId: string | null) {
     if (chat.folder_id === destinationFolderId || moveRequestsPending.current.has(chat.id)) return false;
@@ -334,7 +348,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   }
 
   function createDraft(folderId: string | null = null) {
-    if (!activeChatId && draftFolderId === folderId && !messages.length) return;
+    if (!activeChatId && draftFolderId === folderId && !messages.length && !pendingExchange) return;
     if (pendingAttachments.length) void cleanupPendingAttachments(pendingAttachments.map((item) => item.storagePath));
     setDraftFolderId(folderId);
     setMessages([]);
@@ -342,6 +356,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
     setActiveChatFolderId(null);
     setContent("");
     setPendingAttachments([]);
+    setPendingExchange(null);
     router.push(`/chat${window.location.search}`);
   }
 
@@ -422,18 +437,30 @@ export function ChatShell({ chatId }: ChatShellProps) {
   }
 
   async function sendMessage() {
-    if (!content.trim() || sending) return;
+    if (!content.trim() || sendRequestPending.current) return;
+    sendRequestPending.current = true;
+    const submittedContent = content;
+    const submittedAnswerMode = answerMode;
+    const submittedAttachments = [...pendingAttachments];
+    const ownerKey = conversationOwnerKey;
+    const requestId = ++requestSequence.current;
+    const isInitial = !activeChatId;
+    setPendingExchange({
+      requestId, ownerKey, content: submittedContent, answerMode: submittedAnswerMode,
+      attachments: submittedAttachments, status: "loading",
+    });
+    setContent("");
+    setPendingAttachments([]);
     setSending(true);
     try {
-      const isInitial = !activeChatId;
       const response = await fetch(isInitial ? "/api/chats/initial-exchange" : `/api/chats/${activeChatId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content,
-          answerMode,
+          content: submittedContent,
+          answerMode: submittedAnswerMode,
           ...(isInitial ? { folderId: draftFolderId } : {}),
-          attachments: pendingAttachments.map((item) => ({
+          attachments: submittedAttachments.map((item) => ({
             storagePath: item.storagePath,
             mimeType: item.mimeType,
             sizeBytes: item.sizeBytes,
@@ -443,25 +470,36 @@ export function ChatShell({ chatId }: ChatShellProps) {
       const json = await response.json();
       if (!response.ok) throw new Error(json?.error?.message ?? "The message could not be sent.");
 
-      setContent("");
-      setPendingAttachments([]);
+      if (activeOwnerRef.current !== ownerKey) return;
       if (isInitial) {
         const createdChat = json.data.chat as Chat;
         setChats((current) => sort === "oldest" ? [...current, createdChat] : [createdChat, ...current]);
-        setMessages([json.data.userMessage, json.data.assistantMessage]);
+        setMessages([
+          { ...json.data.userMessage, attachments: submittedAttachments },
+          json.data.assistantMessage,
+        ]);
+        setPendingExchange(null);
         setActiveChatFolderId(createdChat.folder_id);
         setDraftFolderId(null);
         router.push(chatHref(createdChat.id));
       } else {
-        await fetchMessages(activeChatId);
+        setMessages((current) => [...current, json.data.userMessage, json.data.assistantMessage]);
+        setPendingExchange(null);
       }
     } catch (error) {
+      if (activeOwnerRef.current === ownerKey) {
+        setPendingExchange((current) => current?.requestId === requestId
+          ? { ...current, status: "error" }
+          : current);
+        setPendingAttachments(submittedAttachments);
+      }
       notifications.show({
         color: "red",
         title: "Error",
         message: error instanceof Error ? error.message : "An error occurred.",
       });
     } finally {
+      sendRequestPending.current = false;
       setSending(false);
     }
   }
@@ -709,42 +747,19 @@ export function ChatShell({ chatId }: ChatShellProps) {
           <Stack gap="md" h="calc(100vh - 110px)">
             <ScrollArea type="auto" flex={1} offsetScrollbars style={{ backgroundColor: "#ffffff", borderRadius: 12 }}>
               <Stack gap="md" p="xs">
-                {messages.map((message) => (
-                  <Box
-                    key={message.id}
-                    p="md"
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid var(--mantine-color-gray-3)",
-                      background:
-                        message.role === "user"
-                          ? "var(--mantine-color-blue-0)"
-                          : "var(--mantine-color-gray-0)",
-                    }}
-                  >
-                    <Group justify="space-between" mb={8}>
-                      <Badge variant="light">{message.role}</Badge>
-                      {message.role === "assistant" && getAnswerModeLabel(message.answer_mode) ? (
-                        <Badge variant="light" color="gray" radius="xl" size="sm">
-                          {getAnswerModeLabel(message.answer_mode)}
-                        </Badge>
-                      ) : null}
-                    </Group>
-                    <MarkdownView value={message.content_text || ""} />
-                    {message.attachments?.length ? (
-                      <Group mt="sm">
-                        {message.attachments.map((attachment) => (
-                          <img
-                            key={attachment.storagePath}
-                            src={attachment.signedUrl}
-                            alt="Attachment"
-                            style={{ width: 150, borderRadius: 8 }}
-                          />
-                        ))}
-                      </Group>
-                    ) : null}
-                  </Box>
-                ))}
+                {messages.map((message) => <MessageCard key={message.id} message={message} />)}
+                {visiblePendingExchange ? (
+                  <>
+                    <MessageCard message={{
+                      role: "user", content_text: visiblePendingExchange.content,
+                      attachments: visiblePendingExchange.attachments,
+                    }} />
+                    <MessageCard pendingStatus={visiblePendingExchange.status} message={{
+                      role: "assistant", content_text: "", answer_mode: visiblePendingExchange.answerMode,
+                    }} />
+                  </>
+                ) : null}
+                <div ref={conversationEndRef} aria-hidden="true" />
               </Stack>
             </ScrollArea>
 
@@ -814,9 +829,10 @@ export function ChatShell({ chatId }: ChatShellProps) {
                   autosize
                   value={content}
                   onChange={(event) => setContent(event.currentTarget.value)}
+                  disabled={sending}
                   style={{ flex: 1 }}
                 />
-                <FileButton onChange={uploadImage} accept="image/png,image/jpeg,image/webp,image/gif">
+                <FileButton onChange={uploadImage} accept="image/png,image/jpeg,image/webp,image/gif" disabled={sending}>
                   {(props) => (
                     <ActionIcon variant="light" size="lg" {...props} aria-label="upload-image">
                       <IconPhoto size={18} />
