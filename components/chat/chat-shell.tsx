@@ -62,6 +62,7 @@ import { DeleteFolderModal } from "@/components/chat/delete-folder-modal";
 import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { MoveChatModal } from "@/components/chat/move-chat-modal";
 import { NoFolderDropZone } from "@/components/chat/no-folder-drop-zone";
+import { deriveHistoryTree } from "@/components/chat/history-tree";
 
 type Folder = {
   id: string;
@@ -135,6 +136,8 @@ export function ChatShell({ chatId }: ChatShellProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
   );
+  const historyTree = useMemo(() => deriveHistoryTree(folders, chats, search), [folders, chats, search]);
+  const hasSearchResults = historyTree.visibleFolders.length > 0 || historyTree.noFolderChats.length > 0;
 
   async function moveChatToFolder(chat: Chat, destinationFolderId: string | null) {
     if (chat.folder_id === destinationFolderId || moveRequestsPending.current.has(chat.id)) return false;
@@ -592,13 +595,13 @@ export function ChatShell({ chatId }: ChatShellProps) {
             </Stack>
           ) : loading ? (
             <Group gap="xs"><Loader size="sm" /><Text size="sm">Loading history…</Text></Group>
-          ) : chats.length === 0 ? (
+          ) : !hasSearchResults ? (
             <Text size="sm" c="dimmed">
-              {search ? "No history items match your search." : "No history yet. Create a chat to get started."}
+              {search ? "No matching chats or folders." : "No history yet. Create a chat to get started."}
             </Text>
           ) : null}
-          <Text fw={600}>Folders</Text>
-          {!loading && !historyError ? (
+          {(!search || historyTree.visibleFolders.length > 0) ? <Text fw={600}>Folders</Text> : null}
+          {!loading && !historyError && (!search || historyTree.visibleFolders.length > 0) ? (
             <ScrollArea.Autosize
               type="auto"
               scrollbars="y"
@@ -618,13 +621,12 @@ export function ChatShell({ chatId }: ChatShellProps) {
               style={{ width: "100%", minWidth: 0, maxWidth: "100%", flexShrink: 1, minHeight: 0 }}
             >
               <Stack gap="sm" pr="xs" style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
-                {folders.map((folder) => (
+                {historyTree.visibleFolders.map(({ folder, chats: folderChats }) => (
                   <HistoryFolderItem key={`${folder.id}:${folderExpandSignals[folder.id] ?? 0}`} name={folder.name} folderId={folder.id}
+                    forceExpanded={Boolean(search && folderChats.length)}
                     onNewChat={() => createDraft(folder.id)} onRename={() => setFolderToRename(folder)}
                     onDelete={() => setFolderToDelete(folder)}>
-                      {chats
-                        .filter((chat) => chat.folder_id === folder.id)
-                        .map((chat) => (
+                      {folderChats.map((chat) => (
                           <HistoryChatItem
                             key={chat.id}
                             id={chat.id}
@@ -644,7 +646,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
               </Stack>
             </ScrollArea.Autosize>
           ) : null}
-          {!loading && !historyError ? (
+          {!loading && !historyError && (!search || historyTree.noFolderChats.length > 0) ? (
             <NoFolderDropZone>
             <Text fw={600} px={4} py={2}>No Folder</Text>
             <ScrollArea
@@ -654,9 +656,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
               style={{ flex: 1, minHeight: 0 }}
             >
               <Stack gap={2} pr="xs">
-                {chats
-                  .filter((chat) => !chat.folder_id)
-                  .map((chat) => (
+                {historyTree.noFolderChats.map((chat) => (
                     <HistoryChatItem
                       key={chat.id}
                       id={chat.id}

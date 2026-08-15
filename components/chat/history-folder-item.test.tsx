@@ -79,6 +79,25 @@ describe("HistoryFolderItem", () => {
     expect(document.querySelector('[aria-label="Expand Renamed"]')?.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("temporarily exposes search matches without overwriting normal collapse state", async () => {
+    const folder = (forceExpanded: boolean) => (
+      <MantineProvider><HistoryFolderItem name="Math" forceExpanded={forceExpanded}
+        onNewChat={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()}>
+        <span>Matching math chat</span>
+      </HistoryFolderItem></MantineProvider>
+    );
+    await act(async () => root.render(folder(false)));
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Collapse Math"]')!.click());
+    expect(document.querySelector('[aria-label="Expand Math"]')).not.toBeNull();
+
+    await act(async () => root.render(folder(true)));
+    expect(document.querySelector('[aria-label="Collapse Math"]')?.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Collapse Math"]')!.click());
+
+    await act(async () => root.render(folder(false)));
+    expect(document.querySelector('[aria-label="Expand Math"]')?.getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("disables the chevron and shows an empty-folder tooltip when there are no chats", async () => {
     await act(async () => {
       root.render(<MantineProvider><HistoryFolderItem name="Empty" onNewChat={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()}>

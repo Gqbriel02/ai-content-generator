@@ -234,12 +234,12 @@ describe("persistInitialChatExchange", () => {
 
 describe("chat history", () => {
   const chats = [
-    { id: "a", title: "First", created_at: "2025-01-01T00:00:00Z", messages: [{ content_text: "shared term" }, { content_text: "shared term again" }] },
+    { id: "a", title: "First", created_at: "2025-01-01T00:00:00Z", messages: [{ content_text: "shared term" }] },
     { id: "b", title: "Shared term title", created_at: "2025-01-02T00:00:00Z", messages: [] },
   ];
 
-  it("returns each matching chat once when multiple messages match", () => {
-    expect(filterAndSortChats(chats, " shared TERM ", "newest").map((chat) => chat.id)).toEqual(["b", "a"]);
+  it("trims and matches titles case-insensitively without matching message content", () => {
+    expect(filterAndSortChats(chats, " shared TERM ", "newest").map((chat) => chat.id)).toEqual(["b"]);
   });
 
   it("sorts oldest first and uses the id as a deterministic tie-breaker", () => {
@@ -256,6 +256,7 @@ describe("chat history", () => {
     expect(eq).toHaveBeenCalledWith("profile_id", "owner-profile");
     expect(select).toHaveBeenCalledWith(expect.stringContaining("title"));
     expect(select).toHaveBeenCalledWith(expect.stringContaining("model_name"));
+    expect(select).not.toHaveBeenCalledWith(expect.stringContaining("messages"));
   });
 });
 

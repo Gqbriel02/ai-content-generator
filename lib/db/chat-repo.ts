@@ -90,7 +90,6 @@ type HistoryChat = {
   id: string;
   title: string;
   created_at: string;
-  messages?: { content_text: string | null }[] | null;
   [key: string]: unknown;
 };
 
@@ -102,12 +101,7 @@ export function filterAndSortChats(
 ) {
   const needle = search.trim().toLocaleLowerCase();
   const filtered = needle
-    ? chats.filter((chat) =>
-        chat.title.toLocaleLowerCase().includes(needle) ||
-        (chat.messages ?? []).some((message) =>
-          (message.content_text ?? "").toLocaleLowerCase().includes(needle),
-        ),
-      )
+    ? chats.filter((chat) => chat.title.toLocaleLowerCase().includes(needle))
     : chats;
 
   return filtered
@@ -121,11 +115,7 @@ export function filterAndSortChats(
         : right.id.localeCompare(left.id);
     })
     .slice(0, limit)
-    .map((chat) => {
-      const result = { ...chat };
-      delete result.messages;
-      return result;
-    });
+    .map((chat) => ({ ...chat }));
 }
 
 export async function listChats(
@@ -135,7 +125,7 @@ export async function listChats(
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("chats")
-    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at, messages(content_text)")
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
     .eq("profile_id", profileId);
   if (error) throw error;
   return filterAndSortChats(

@@ -12,13 +12,15 @@ type Props = {
   onRename: () => void;
   onDelete: () => void;
   folderId?: string;
+  forceExpanded?: boolean;
 };
 
-export function HistoryFolderItem({ name, children, onNewChat, onRename, onDelete, folderId = name }: Props) {
+export function HistoryFolderItem({ name, children, onNewChat, onRename, onDelete, folderId = name, forceExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(true);
   const { setNodeRef, isOver } = useDroppable({ id: `folder:${folderId}`, data: { folderId } });
   const contentId = useId();
   const hasChats = Children.count(children) > 0;
+  const visiblyExpanded = forceExpanded || expanded;
   return (
     <Box ref={setNodeRef} p={8} data-folder-drop-id={folderId} style={{
       border: `1px solid ${isOver ? "var(--mantine-color-blue-5)" : "var(--mantine-color-gray-3)"}`,
@@ -32,7 +34,7 @@ export function HistoryFolderItem({ name, children, onNewChat, onRename, onDelet
             {name}
           </Text>
         </Tooltip>
-        <Tooltip label={hasChats ? (expanded ? "Collapse folder" : "Expand folder") : "No chats in this folder"}>
+        <Tooltip label={hasChats ? (visiblyExpanded ? "Collapse folder" : "Expand folder") : "No chats in this folder"}>
           <span
             title={hasChats ? undefined : "No chats in this folder"}
             style={{ display: "inline-flex", flexShrink: 0, cursor: hasChats ? undefined : "not-allowed" }}
@@ -42,15 +44,15 @@ export function HistoryFolderItem({ name, children, onNewChat, onRename, onDelet
               variant="subtle"
               color="gray"
               disabled={!hasChats}
-              aria-label={hasChats ? `${expanded ? "Collapse" : "Expand"} ${name}` : `No chats in ${name}`}
-              aria-expanded={hasChats ? expanded : undefined}
+              aria-label={hasChats ? `${visiblyExpanded ? "Collapse" : "Expand"} ${name}` : `No chats in ${name}`}
+              aria-expanded={hasChats ? visiblyExpanded : undefined}
               aria-controls={hasChats ? contentId : undefined}
               onClick={(event) => {
                 event.stopPropagation();
-                if (hasChats) setExpanded((current) => !current);
+                if (hasChats && !forceExpanded) setExpanded((current) => !current);
               }}
             >
-              {expanded ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
+              {visiblyExpanded ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
             </ActionIcon>
           </span>
         </Tooltip>
@@ -75,7 +77,7 @@ export function HistoryFolderItem({ name, children, onNewChat, onRename, onDelet
           </Menu.Dropdown>
         </Menu>
       </Group>
-      <Collapse expanded={expanded} keepMounted style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
+      <Collapse expanded={visiblyExpanded} keepMounted style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
         <Stack id={contentId} gap={2} mt={6} style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
           {children}
         </Stack>
