@@ -21,7 +21,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
   if (hitRateLimit(`image:${auth.session.profileId}`, 10)) return fail("The image service is busy. Please try again shortly.", 429);
   const dimensions = IMAGE_ASPECT_RATIOS[parsed.data.aspectRatio]; let attachment; let persisted = false;
   try {
-    attachment = await generateAndStoreImage({ prompt: parsed.data.content, profileId: auth.session.profileId, imageRequestId, ...dimensions });
+    attachment = await generateAndStoreImage({ prompt: parsed.data.content, profileId: auth.session.profileId, chatId, imageRequestId, ...dimensions });
     const result = await persistImageChatExchange({ chatId, profileId: auth.session.profileId, userContent: parsed.data.content, attachment });
     persisted = true; console.info(`[image-generation] imageRequestId=${imageRequestId} stage=db-persist success`);
     try {

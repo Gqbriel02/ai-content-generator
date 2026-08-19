@@ -187,6 +187,7 @@ describe("persistChatExchange", () => {
       p_assistant_content: "Response",
       p_assistant_answer_mode: assistantAnswerMode,
       p_assistant_payload: null,
+      p_attachments: [],
     });
     },
   );
@@ -212,7 +213,7 @@ describe("persistInitialChatExchange", () => {
       chat: { id: "new-chat", folder_id: "folder-id" },
       userMessage: { id: "user-id" }, assistantMessage: { id: "assistant-id" },
     }, error: null });
-    await expect(persistInitialChatExchange({
+    await expect(persistInitialChatExchange({ chatId: "00000000-0000-4000-8000-000000000009",
       profileId: "profile-id", folderId: "folder-id", title: "Chat title", modelName: "model",
       userContent: "Prompt", assistantContent: "Reply", assistantAnswerMode: "tutorial",
       attachments: [{ storagePath: "profile-id/image.png", mimeType: "image/png", sizeBytes: 12 }],
@@ -225,7 +226,7 @@ describe("persistInitialChatExchange", () => {
 
   it("rejects an atomic persistence failure", async () => {
     rpc.mockResolvedValue({ data: null, error: new Error("transaction failed") });
-    await expect(persistInitialChatExchange({
+    await expect(persistInitialChatExchange({ chatId: "00000000-0000-4000-8000-000000000009",
       profileId: "profile-id", folderId: null, title: "Chat", modelName: "model",
       userContent: "Prompt", assistantContent: "Reply", assistantAnswerMode: "standard", attachments: [],
     })).rejects.toThrow("transaction failed");
@@ -233,10 +234,11 @@ describe("persistInitialChatExchange", () => {
 
   it("matches migration 0008 for an assistant image attachment and nullable answer mode", async () => {
     rpc.mockResolvedValue({ data: { chat: { id: "chat" }, userMessage: { id: "user" }, assistantMessage: { id: "assistant", answer_mode: null } }, error: null });
-    await persistInitialChatExchange({ profileId: "profile", folderId: null, title: "Image", modelName: "flux-2-klein-4b",
+    await persistInitialChatExchange({ chatId: "00000000-0000-4000-8000-000000000009", profileId: "profile", folderId: null, title: "Image", modelName: "flux-2-klein-4b",
       userContent: "Prompt", assistantContent: "", assistantAnswerMode: null, attachmentTarget: "assistant",
       attachments: [{ storagePath: "profile/generated/id.webp", mimeType: "image/webp", width: 1024, height: 1024, sizeBytes: 42 }] });
     expect(rpc).toHaveBeenCalledWith("persist_initial_chat_exchange", {
+      p_chat_id: "00000000-0000-4000-8000-000000000009",
       p_profile_id: "profile", p_folder_id: null, p_title: "Image", p_model_name: "flux-2-klein-4b",
       p_user_content: "Prompt", p_assistant_content: "", p_assistant_answer_mode: null,
       p_attachments: [{ storage_path: "profile/generated/id.webp", mime_type: "image/webp", width: 1024, height: 1024, size_bytes: 42 }],

@@ -317,6 +317,7 @@ export async function persistChatExchange(input: {
   assistantContent: string;
   assistantAnswerMode: AnswerMode;
   assistantPayload?: unknown;
+  attachments?: AttachmentInput[];
 }) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.rpc("persist_chat_exchange", {
@@ -326,6 +327,10 @@ export async function persistChatExchange(input: {
     p_assistant_content: input.assistantContent,
     p_assistant_answer_mode: input.assistantAnswerMode,
     p_assistant_payload: input.assistantPayload ?? null,
+    p_attachments: (input.attachments ?? []).map((attachment) => ({
+      storage_path: attachment.storagePath, mime_type: attachment.mimeType,
+      width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
+    })),
   });
 
   if (error) throw error;
@@ -344,6 +349,7 @@ export async function persistChatExchange(input: {
 }
 
 export async function persistInitialChatExchange(input: {
+  chatId: string;
   profileId: string;
   folderId: string | null;
   title: string;
@@ -356,6 +362,7 @@ export async function persistInitialChatExchange(input: {
 }) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.rpc("persist_initial_chat_exchange", {
+    p_chat_id: input.chatId,
     p_profile_id: input.profileId,
     p_folder_id: input.folderId,
     p_title: input.title,

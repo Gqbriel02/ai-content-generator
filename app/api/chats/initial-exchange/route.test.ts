@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireSession: vi.fn(), findFolderById: vi.fn(), persistInitialChatExchange: vi.fn(),
-  hitRateLimit: vi.fn(), createAttachmentDataUrl: vi.fn(), generateAssistantReply: vi.fn(), generateChatTitle: vi.fn(),
+  hitRateLimit: vi.fn(), generateAssistantReply: vi.fn(), generateChatTitle: vi.fn(),
 }));
 vi.mock("@/lib/auth/require-session", () => ({ requireSession: mocks.requireSession }));
 vi.mock("@/lib/db/chat-repo", () => ({ findFolderById: mocks.findFolderById, persistInitialChatExchange: mocks.persistInitialChatExchange }));
 vi.mock("@/lib/http/rate-limit", () => ({ hitRateLimit: mocks.hitRateLimit }));
-vi.mock("@/lib/storage/attachments", () => ({ createAttachmentDataUrl: mocks.createAttachmentDataUrl }));
+vi.mock("@/lib/storage/attachments", () => ({ createSignedReadUrl: vi.fn(), deleteAttachmentObjects: vi.fn() }));
 vi.mock("@/lib/ai/lmstudio", () => ({ generateAssistantReply: mocks.generateAssistantReply, generateChatTitle: mocks.generateChatTitle, LmStudioError: class extends Error {} }));
 
 import { POST } from "./route";

@@ -2,44 +2,49 @@ import { requireSession } from "@/lib/auth/require-session";
 import { findFolderById, persistInitialChatExchange } from "@/lib/db/chat-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
-import { createInitialExchangeSchema } from "@/lib/validation/chat";
-import { createAttachmentDataUrl } from "@/lib/storage/attachments";
+import { createSignedReadUrl, deleteAttachmentObjects } from "@/lib/storage/attachments";
+import { parseTextExchangeRequest } from "@/lib/http/text-exchange-request";
+import { pendingImageDataUrl, persistUploadedImages } from "@/lib/storage/uploaded-images";
 import { generateAssistantReply, generateChatTitle, LmStudioError } from "@/lib/ai/lmstudio";
 import { resolveInitialChatTitle } from "@/lib/ai/chat-title";
 
 export async function POST(request: Request) {
   const auth = await requireSession();
   if ("error" in auth) return auth.error;
-  let body: unknown;
-  try { body = await request.json(); } catch { return fail("The request body must contain valid JSON.", 400); }
-  const parsed = createInitialExchangeSchema.safeParse(body);
-  if (!parsed.success) return fail("Enter a non-empty message of no more than 12,000 characters.", 400, parsed.error.flatten());
-  if (parsed.data.folderId && !(await findFolderById(auth.session.profileId, parsed.data.folderId))) return fail("Folder not found.", 404);
-  if (parsed.data.attachments.some((item) => !item.storagePath.startsWith(`${auth.session.profileId}/`))) return fail("Invalid attachment.", 400);
+  let parsed;
+  try { parsed = await parseTextExchangeRequest(request, true); } catch { return fail("Enter a valid message and image attachments.", 400); }
+  if (parsed.folderId && !(await findFolderById(auth.session.profileId, parsed.folderId))) return fail("Folder not found.", 404);
   if (hitRateLimit(`chat:${auth.session.profileId}`, 40)) return fail("You have reached the request limit. Please try again in one minute.", 429);
 
   try {
-    const attachments = await Promise.all(parsed.data.attachments.map(async (item) => ({
-      dataUrl: await createAttachmentDataUrl(item.storagePath, item.mimeType), mimeType: item.mimeType,
-    })));
-    const assistantText = await generateAssistantReply([{ role: "user", contentText: parsed.data.content, attachments }], parsed.data.answerMode);
+    const attachments = parsed.files.map((item) => ({ dataUrl: pendingImageDataUrl(item), mimeType: item.mimeType }));
+    const assistantText = await generateAssistantReply([{ role: "user", contentText: parsed.content, attachments }], parsed.answerMode);
     let generatedTitle: string | null = null;
     try {
-      generatedTitle = await generateChatTitle({ userMessage: parsed.data.content, assistantMessage: assistantText });
+      generatedTitle = await generateChatTitle({ userMessage: parsed.content, assistantMessage: assistantText });
     } catch (error) {
       console.error("Unable to generate an initial chat title; using fallback.", error);
     }
-    const title = resolveInitialChatTitle({ generatedTitle, userMessage: parsed.data.content });
-    const result = await persistInitialChatExchange({
-      profileId: auth.session.profileId, folderId: parsed.data.folderId,
+    const title = resolveInitialChatTitle({ generatedTitle, userMessage: parsed.content });
+    const chatId = randomUUID();
+    const stored = await persistUploadedImages({ profileId: auth.session.profileId, chatId, images: parsed.files });
+    let result;
+    try { result = await persistInitialChatExchange({
+      chatId, profileId: auth.session.profileId, folderId: parsed.folderId,
       title, modelName: process.env.LM_STUDIO_MODEL ?? "local-model",
-      userContent: parsed.data.content, assistantContent: assistantText,
-      assistantAnswerMode: parsed.data.answerMode, attachments: parsed.data.attachments,
-    });
-    return ok(result, { status: 201 });
+      userContent: parsed.content, assistantContent: assistantText,
+      assistantAnswerMode: parsed.answerMode, attachments: stored,
+    }); } catch (error) { await deleteAttachmentObjects(stored.map((item) => item.storagePath)).catch(() => undefined); throw error; }
+    try {
+      const userAttachments = await Promise.all(stored.map(async (item) => ({ ...item, signedUrl: await createSignedReadUrl(item.storagePath) })));
+      return ok({ ...result, userMessage: { ...result.userMessage, attachments: userAttachments } }, { status: 201 });
+    } catch {
+      return ok({ ...result, userMessage: { ...result.userMessage, attachments: [] }, warning: { code: "ATTACHMENT_SIGNED_URL_ERROR" } }, { status: 201 });
+    }
   } catch (error) {
     if (error instanceof LmStudioError) return fail(error.message, error.status);
     console.error("Unable to create initial chat exchange.", error);
     return fail("The generated response could not be saved. Please try again.", 500);
   }
 }
+import { randomUUID } from "node:crypto";

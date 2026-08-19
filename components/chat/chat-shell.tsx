@@ -62,6 +62,7 @@ import { MoveChatModal } from "@/components/chat/move-chat-modal";
 import { NoFolderDropZone } from "@/components/chat/no-folder-drop-zone";
 import { deriveHistoryTree } from "@/components/chat/history-tree";
 import { MessageCard } from "@/components/chat/message-card";
+import { createClientTemporaryId } from "@/lib/client/temporary-id";
 
 type Folder = {
   id: string;
@@ -89,13 +90,15 @@ type ChatShellProps = {
   chatId?: string;
 };
 
+type DraftAttachment = { id: string; file: File; mimeType: string; sizeBytes: number; signedUrl: string; storagePath: string };
+
 type PendingExchange = {
   requestId: number;
   ownerKey: string;
   content: string;
   answerMode: AnswerMode;
   generationType: "text" | "image";
-  attachments: { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[];
+  attachments: DraftAttachment[];
   status: "loading" | "error";
   errorMessage?: string;
 };
@@ -125,9 +128,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "16:9" | "9:16">("1:1");
   const [navbarOpened, { toggle: toggleNavbar, close: closeNavbar }] = useDisclosure(false);
   const [asideOpened, { toggle: toggleAside }] = useDisclosure(false);
-  const [pendingAttachments, setPendingAttachments] = useState<
-    { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[]
-  >([]);
+  const [pendingAttachments, setPendingAttachments] = useState<DraftAttachment[]>([]);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
   const [chatToMove, setChatToMove] = useState<Chat | null>(null);
@@ -145,6 +146,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const requestSequence = useRef(0);
   const sendRequestPending = useRef(false);
   const conversationEndRef = useRef<HTMLDivElement>(null);
+  const previewUrlsRef = useRef(new Set<string>());
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
@@ -159,6 +161,16 @@ export function ChatShell({ chatId }: ChatShellProps) {
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages, visiblePendingExchange?.status, visiblePendingExchange?.requestId]);
+
+  useEffect(() => () => {
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current.clear();
+  }, []);
+
+  function revokePreview(url: string) {
+    URL.revokeObjectURL(url);
+    previewUrlsRef.current.delete(url);
+  }
 
   async function moveChatToFolder(chat: Chat, destinationFolderId: string | null) {
     if (chat.folder_id === destinationFolderId || moveRequestsPending.current.has(chat.id)) return false;
@@ -356,7 +368,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
 
   function createDraft(folderId: string | null = null) {
     if (!activeChatId && draftFolderId === folderId && !messages.length && !pendingExchange) return;
-    if (pendingAttachments.length) void cleanupPendingAttachments(pendingAttachments.map((item) => item.storagePath));
+    pendingAttachments.forEach((item) => revokePreview(item.signedUrl));
     setDraftFolderId(folderId);
     setMessages([]);
     setRating(null);
@@ -425,22 +437,17 @@ export function ChatShell({ chatId }: ChatShellProps) {
     }
   }
 
-  async function uploadImage(file: File | null) {
+  function uploadImage(file: File | null) {
     if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/api/uploads", {
-      method: "POST",
-      body: formData,
-    });
-    const json = await response.json();
-    if (!response.ok) {
-      notifications.show({ color: "red", title: "Upload Failed", message: json?.error?.message });
+    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) || file.size > 8 * 1024 * 1024) {
+      notifications.show({ color: "red", title: "Attachment rejected", message: "Choose a PNG, JPEG, WebP, or GIF image up to 8 MB." });
       return;
     }
-
-    setPendingAttachments((previous) => [...previous, json.data]);
+    if (pendingAttachments.length >= 8) return;
+    const id = createClientTemporaryId();
+    const signedUrl = URL.createObjectURL(file);
+    previewUrlsRef.current.add(signedUrl);
+    setPendingAttachments((previous) => [...previous, { id, file, mimeType: file.type, sizeBytes: file.size, signedUrl, storagePath: `local:${id}` }]);
   }
 
   async function sendMessage() {
@@ -463,17 +470,20 @@ export function ChatShell({ chatId }: ChatShellProps) {
     let responseErrorCode = "";
     let responseErrorMessage = "";
     try {
-      const response = await fetch(submittedGenerationType === "image"
+      const textForm = new FormData();
+      textForm.set("content", submittedContent);
+      textForm.set("answerMode", submittedAnswerMode);
+      if (isInitial && draftFolderId) textForm.set("folderId", draftFolderId);
+      submittedAttachments.forEach((item) => textForm.append("files", item.file, item.file.name));
+      const isImageRequest = submittedGenerationType === "image";
+      const response = await fetch(isImageRequest
         ? (isInitial ? "/api/chats/initial-image-exchange" : `/api/chats/${activeChatId}/images`)
         : (isInitial ? "/api/chats/initial-exchange" : `/api/chats/${activeChatId}/messages`), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submittedGenerationType === "image" ? {
+        ...(isImageRequest ? { headers: { "Content-Type": "application/json" } } : {}),
+        body: isImageRequest ? JSON.stringify({
           content: submittedContent, aspectRatio, ...(isInitial ? { folderId: draftFolderId } : {}),
-        } : {
-          content: submittedContent, answerMode: submittedAnswerMode, ...(isInitial ? { folderId: draftFolderId } : {}),
-          attachments: submittedAttachments.map((item) => ({ storagePath: item.storagePath, mimeType: item.mimeType, sizeBytes: item.sizeBytes })),
-        }),
+        }) : textForm,
       });
       const json = await response.json();
       responseErrorCode = typeof json?.error?.code === "string" ? json.error.code : "";
@@ -485,7 +495,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
         const createdChat = json.data.chat as Chat;
         setChats((current) => sort === "oldest" ? [...current, createdChat] : [createdChat, ...current]);
         setMessages([
-          { ...json.data.userMessage, attachments: submittedAttachments },
+          { ...json.data.userMessage, attachments: json.data.userMessage.attachments ?? [] },
           { ...json.data.assistantMessage, generation_type: submittedGenerationType, image_alt: submittedContent },
         ]);
         setPendingExchange(null);
@@ -496,6 +506,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
         setMessages((current) => [...current, json.data.userMessage, { ...json.data.assistantMessage, generation_type: submittedGenerationType, image_alt: submittedContent }]);
         setPendingExchange(null);
       }
+      submittedAttachments.forEach((item) => revokePreview(item.signedUrl));
     } catch (error) {
       if (activeOwnerRef.current === ownerKey) {
         const code = responseErrorCode;
@@ -522,18 +533,12 @@ export function ChatShell({ chatId }: ChatShellProps) {
     }
   }
 
-  async function cleanupPendingAttachments(storagePaths: string[]) {
-    if (!storagePaths.length) return;
-    try {
-      await fetch("/api/uploads", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storagePaths }) });
-    } catch { /* Best-effort cleanup; the draft remains usable. */ }
-  }
-
   function removePendingAttachment(storagePath: string) {
-    setPendingAttachments((previous) =>
-      previous.filter((attachment) => attachment.storagePath !== storagePath),
-    );
-    void cleanupPendingAttachments([storagePath]);
+    setPendingAttachments((previous) => {
+      const removed = previous.find((attachment) => attachment.storagePath === storagePath);
+      if (removed) revokePreview(removed.signedUrl);
+      return previous.filter((attachment) => attachment.storagePath !== storagePath);
+    });
   }
 
   async function logout() {

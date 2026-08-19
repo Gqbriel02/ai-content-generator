@@ -7,8 +7,9 @@ import {
 } from "@/lib/db/chat-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
-import { createMessageSchema } from "@/lib/validation/chat";
-import { createSignedReadUrl } from "@/lib/storage/attachments";
+import { createSignedReadUrl, deleteAttachmentObjects } from "@/lib/storage/attachments";
+import { parseTextExchangeRequest } from "@/lib/http/text-exchange-request";
+import { pendingImageDataUrl, persistUploadedImages } from "@/lib/storage/uploaded-images";
 import { generateAssistantReply, LmStudioError } from "@/lib/ai/lmstudio";
 import { z } from "zod";
 
@@ -81,21 +82,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
     return fail("Chat not found.", 404);
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return fail("The request body must contain valid JSON.", 400);
-  }
-
-  const parsed = createMessageSchema.safeParse(body);
-  if (!parsed.success) {
-    return fail("Enter a non-empty message of no more than 12,000 characters.", 400, parsed.error.flatten());
-  }
-
-  if (parsed.data.attachments.length > 0) {
-    return fail("Attachments are not supported for text generation.", 400);
-  }
+  let parsed;
+  try { parsed = await parseTextExchangeRequest(request, false); } catch { return fail("Enter a valid message and image attachments.", 400); }
 
   const limiterKey = `chat:${auth.session.profileId}`;
   if (hitRateLimit(limiterKey, 40)) {
@@ -112,13 +100,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
 
   messagesForModel.push({
     role: "user",
-    contentText: parsed.data.content,
-    attachments: [],
+    contentText: parsed.content,
+    attachments: parsed.files.map((item) => ({ dataUrl: pendingImageDataUrl(item), mimeType: item.mimeType })),
   });
 
   let assistantText = "";
   try {
-    assistantText = await generateAssistantReply(messagesForModel, parsed.data.answerMode);
+    assistantText = await generateAssistantReply(messagesForModel, parsed.answerMode);
   } catch (error) {
     if (error instanceof LmStudioError) {
       return fail(error.message, error.status);
@@ -126,22 +114,26 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
     return fail("The AI response could not be generated. Please try again.", 500);
   }
 
-  let exchange;
+  let exchange; let stored: Awaited<ReturnType<typeof persistUploadedImages>> = [];
   try {
+    stored = await persistUploadedImages({ profileId: auth.session.profileId, chatId, images: parsed.files });
     exchange = await persistChatExchange({
       chatId,
       profileId: auth.session.profileId,
-      userContent: parsed.data.content,
+      userContent: parsed.content,
       assistantContent: assistantText,
-      assistantAnswerMode: parsed.data.answerMode,
+      assistantAnswerMode: parsed.answerMode,
+      attachments: stored,
     });
   } catch (error) {
+    await deleteAttachmentObjects(stored.map((item) => item.storagePath)).catch(() => undefined);
     console.error("Unable to persist generated exchange.", error);
     return fail("The generated response could not be saved. Please try again.", 500);
   }
 
-  return ok({
-    userMessage: exchange.userMessage,
-    assistantMessage: exchange.assistantMessage,
-  });
+  let attachments: { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[] = [];
+  let warning: { code: string } | undefined;
+  try { attachments = await Promise.all(stored.map(async (item) => ({ ...item, signedUrl: await createSignedReadUrl(item.storagePath) }))); }
+  catch { warning = { code: "ATTACHMENT_SIGNED_URL_ERROR" }; }
+  return ok({ userMessage: { ...exchange.userMessage, attachments }, assistantMessage: exchange.assistantMessage, ...(warning ? { warning } : {}) });
 }

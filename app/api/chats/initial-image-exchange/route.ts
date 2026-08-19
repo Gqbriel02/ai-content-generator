@@ -20,9 +20,10 @@ export async function POST(request: Request) {
   if (parsed.data.folderId && !(await findFolderById(auth.session.profileId, parsed.data.folderId))) return fail("Folder not found.", 404);
   if (hitRateLimit(`image:${auth.session.profileId}`, 10)) return fail("The image service is busy. Please try again shortly.", 429);
   const dimensions = IMAGE_ASPECT_RATIOS[parsed.data.aspectRatio]; let attachment; let persisted = false;
+  const chatId = randomUUID();
   try {
-    attachment = await generateAndStoreImage({ prompt: parsed.data.content, profileId: auth.session.profileId, imageRequestId, ...dimensions });
-    const result = await persistInitialChatExchange({ profileId: auth.session.profileId, folderId: parsed.data.folderId,
+    attachment = await generateAndStoreImage({ prompt: parsed.data.content, profileId: auth.session.profileId, chatId, imageRequestId, ...dimensions });
+    const result = await persistInitialChatExchange({ chatId, profileId: auth.session.profileId, folderId: parsed.data.folderId,
       title: resolveInitialChatTitle({ userMessage: parsed.data.content }), modelName: IMAGE_MODEL_ID,
       userContent: parsed.data.content, assistantContent: "", assistantAnswerMode: null,
       attachments: [attachment], attachmentTarget: "assistant" });

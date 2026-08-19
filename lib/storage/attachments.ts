@@ -1,6 +1,5 @@
-import { env } from "@/lib/config/env";
 import { createServerSupabaseClient } from "@/lib/db/supabase";
-import { randomUUID } from "node:crypto";
+import { CHAT_MEDIA_BUCKET, uploadChatMedia } from "@/lib/storage/chat-media";
 
 const MAX_GENERATED_IMAGE_BYTES = 16 * 1024 * 1024;
 const TRANSIENT_DOWNLOAD_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -12,7 +11,7 @@ export class GeneratedImageStorageError extends Error {
 export async function createSignedReadUrl(storagePath: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.storage
-    .from(env.NEXT_PUBLIC_SUPABASE_BUCKET)
+    .from(CHAT_MEDIA_BUCKET)
     .createSignedUrl(storagePath, 60 * 60);
 
   if (error) throw error;
@@ -21,7 +20,7 @@ export async function createSignedReadUrl(storagePath: string) {
 
 export async function createAttachmentDataUrl(storagePath: string, mimeType: string) {
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase.storage.from(env.NEXT_PUBLIC_SUPABASE_BUCKET).download(storagePath);
+  const { data, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).download(storagePath);
 
   if (error) throw error;
 
@@ -35,14 +34,14 @@ export async function deleteAttachmentObjects(storagePaths: string[]) {
 
   const supabase = createServerSupabaseClient();
   const { error } = await supabase.storage
-    .from(env.NEXT_PUBLIC_SUPABASE_BUCKET)
+    .from(CHAT_MEDIA_BUCKET)
     .remove(storagePaths);
 
   if (error) throw error;
 }
 
 export async function downloadAndStoreGeneratedImage(input: {
-  temporaryUrl: string; profileId: string; width: number; height: number; imageRequestId?: string;
+  temporaryUrl: string; profileId: string; chatId: string; width: number; height: number; imageRequestId?: string;
   sleep?: (ms: number) => Promise<void>;
 }) {
   const sleep = input.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
@@ -69,14 +68,13 @@ export async function downloadAndStoreGeneratedImage(input: {
   const bytes = await response.arrayBuffer();
   if (!bytes.byteLength || bytes.byteLength > MAX_GENERATED_IMAGE_BYTES) throw new GeneratedImageStorageError("The generated image was invalid or too large.", "IMAGE_VALIDATION_ERROR");
   console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=bfl-download success bytes=${bytes.byteLength} mime=${mimeType}`);
-  const extension = mimeType === "image/png" ? "png" : mimeType === "image/jpeg" ? "jpg" : "webp";
-  const storagePath = `${input.profileId}/generated/${Date.now()}-${randomUUID()}.${extension}`;
-  const supabase = createServerSupabaseClient();
-  const { error } = await supabase.storage.from(env.NEXT_PUBLIC_SUPABASE_BUCKET).upload(storagePath, bytes, {
-    contentType: mimeType, upsert: false,
-  });
-  if (error) { console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=storage-upload failed code=${error.name ?? "unknown"}`);
-    throw new GeneratedImageStorageError("The image was generated, but the application could not save it.", "IMAGE_STORAGE_ERROR"); }
+  let storagePath: string;
+  try {
+    storagePath = await uploadChatMedia({ profileId: input.profileId, chatId: input.chatId, kind: "generated", mimeType, bytes });
+  } catch {
+    console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=storage-upload failed`);
+    throw new GeneratedImageStorageError("The image was generated, but the application could not save it.", "IMAGE_STORAGE_ERROR");
+  }
   console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=storage-upload success path=${storagePath}`);
   return { storagePath, mimeType, sizeBytes: bytes.byteLength, width: input.width, height: input.height };
 }
