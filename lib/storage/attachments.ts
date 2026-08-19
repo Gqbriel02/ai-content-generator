@@ -1,5 +1,13 @@
 import { env } from "@/lib/config/env";
 import { createServerSupabaseClient } from "@/lib/db/supabase";
+import { randomUUID } from "node:crypto";
+
+const MAX_GENERATED_IMAGE_BYTES = 16 * 1024 * 1024;
+const TRANSIENT_DOWNLOAD_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+export class GeneratedImageStorageError extends Error {
+  constructor(message: string, public readonly code: "BFL_DOWNLOAD_ERROR" | "IMAGE_VALIDATION_ERROR" | "IMAGE_STORAGE_ERROR") { super(message); }
+}
 
 export async function createSignedReadUrl(storagePath: string) {
   const supabase = createServerSupabaseClient();
@@ -31,4 +39,44 @@ export async function deleteAttachmentObjects(storagePaths: string[]) {
     .remove(storagePaths);
 
   if (error) throw error;
+}
+
+export async function downloadAndStoreGeneratedImage(input: {
+  temporaryUrl: string; profileId: string; width: number; height: number; imageRequestId?: string;
+  sleep?: (ms: number) => Promise<void>;
+}) {
+  const sleep = input.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let response: Response | undefined;
+  console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=bfl-download started`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { response = await fetch(input.temporaryUrl); }
+    catch { console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=bfl-download transient-failure network=true attempt=${attempt}`); }
+    if (response?.ok) break;
+    if (response && !TRANSIENT_DOWNLOAD_STATUS.has(response.status)) {
+      console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=bfl-download failed status=${response.status}`);
+      throw new GeneratedImageStorageError("The generated image could not be downloaded.", "BFL_DOWNLOAD_ERROR");
+    }
+    if (attempt < 3) await sleep(Math.min(500 * 2 ** (attempt - 1), 2000));
+  }
+  if (!response?.ok) throw new GeneratedImageStorageError("The generated image could not be downloaded after the image was generated.", "BFL_DOWNLOAD_ERROR");
+  const mimeType = (response.headers.get("content-type") ?? "").split(";")[0].toLowerCase();
+  if (!mimeType.startsWith("image/") || mimeType === "image/svg+xml") {
+    console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=bfl-download failed mime=${mimeType || "missing"}`);
+    throw new GeneratedImageStorageError("The generated file was not a valid image.", "IMAGE_VALIDATION_ERROR");
+  }
+  const declaredSize = Number(response.headers.get("content-length") ?? 0);
+  if (declaredSize > MAX_GENERATED_IMAGE_BYTES) throw new GeneratedImageStorageError("The generated image was too large.", "IMAGE_VALIDATION_ERROR");
+  const bytes = await response.arrayBuffer();
+  if (!bytes.byteLength || bytes.byteLength > MAX_GENERATED_IMAGE_BYTES) throw new GeneratedImageStorageError("The generated image was invalid or too large.", "IMAGE_VALIDATION_ERROR");
+  console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=bfl-download success bytes=${bytes.byteLength} mime=${mimeType}`);
+  const extension = mimeType === "image/png" ? "png" : mimeType === "image/jpeg" ? "jpg" : "webp";
+  const storagePath = `${input.profileId}/generated/${Date.now()}-${randomUUID()}.${extension}`;
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.storage.from(env.NEXT_PUBLIC_SUPABASE_BUCKET).upload(storagePath, bytes, {
+    contentType: mimeType, upsert: false,
+  });
+  if (error) { console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=storage-upload failed code=${error.name ?? "unknown"}`);
+    throw new GeneratedImageStorageError("The image was generated, but the application could not save it.", "IMAGE_STORAGE_ERROR"); }
+  console.info(`[image-generation] imageRequestId=${input.imageRequestId ?? "unknown"} stage=storage-upload success path=${storagePath}`);
+  return { storagePath, mimeType, sizeBytes: bytes.byteLength, width: input.width, height: input.height };
 }

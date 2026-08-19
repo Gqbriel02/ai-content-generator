@@ -12,11 +12,14 @@ export type DisplayMessage = {
   content_text: string;
   answer_mode?: AnswerMode | null;
   attachments?: { signedUrl: string; mimeType: string; storagePath: string }[];
+  generation_type?: "text" | "image";
+  image_alt?: string;
 };
 
 type Props = {
   message: DisplayMessage;
   pendingStatus?: "loading" | "error";
+  pendingErrorMessage?: string;
 };
 
 function MarkdownView({ value }: { value: string }) {
@@ -24,7 +27,9 @@ function MarkdownView({ value }: { value: string }) {
   return <Box dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-export function MessageCard({ message, pendingStatus }: Props) {
+export function MessageCard({ message, pendingStatus, pendingErrorMessage }: Props) {
+  const isImageGeneration = message.generation_type === "image" ||
+    (message.role === "assistant" && !message.content_text && Boolean(message.attachments?.length));
   return (
     <Box
       p="md"
@@ -38,7 +43,9 @@ export function MessageCard({ message, pendingStatus }: Props) {
     >
       <Group justify="space-between" mb={8}>
         <Badge variant="light">{message.role}</Badge>
-        {message.role === "assistant" && getAnswerModeLabel(message.answer_mode) ? (
+        {message.role === "assistant" && isImageGeneration ? (
+          <Badge variant="light" color="violet" radius="xl" size="sm">IMAGE</Badge>
+        ) : message.role === "assistant" && getAnswerModeLabel(message.answer_mode) ? (
           <Badge variant="light" color="gray" radius="xl" size="sm">
             {getAnswerModeLabel(message.answer_mode)}
           </Badge>
@@ -47,18 +54,18 @@ export function MessageCard({ message, pendingStatus }: Props) {
       {pendingStatus === "loading" ? (
         <Group gap="sm" role="status" aria-live="polite">
           <Loader size="sm" />
-          <Text c="dimmed">Loading...</Text>
+          <Text c="dimmed">{isImageGeneration ? "Generating image..." : "Loading..."}</Text>
         </Group>
       ) : pendingStatus === "error" ? (
-        <Text c="red">Generation failed. Please try again.</Text>
+        <Text c="red">{pendingErrorMessage ?? (isImageGeneration ? "Image generation failed." : "Generation failed. Please try again.")}</Text>
       ) : (
         <MarkdownView value={message.content_text || ""} />
       )}
       {message.attachments?.length ? (
-        <Group mt="sm">
+        <Group mt="sm" style={{ maxWidth: "100%" }}>
           {message.attachments.map((attachment) => (
-            <img key={attachment.storagePath} src={attachment.signedUrl} alt="Attachment"
-              style={{ width: 150, borderRadius: 8 }} />
+            <img key={attachment.storagePath} src={attachment.signedUrl} alt={message.image_alt ?? (message.role === "user" ? "Attachment" : "Generated image")}
+              style={{ width: message.role === "assistant" && !message.content_text ? "min(100%, 768px)" : 150, height: "auto", borderRadius: 8, objectFit: "contain", maxWidth: "100%" }} />
           ))}
         </Group>
       ) : null}

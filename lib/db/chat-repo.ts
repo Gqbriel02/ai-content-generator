@@ -350,8 +350,9 @@ export async function persistInitialChatExchange(input: {
   modelName: string;
   userContent: string;
   assistantContent: string;
-  assistantAnswerMode: AnswerMode;
+  assistantAnswerMode: AnswerMode | null;
   attachments: AttachmentInput[];
+  attachmentTarget?: "user" | "assistant";
 }) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.rpc("persist_initial_chat_exchange", {
@@ -366,12 +367,29 @@ export async function persistInitialChatExchange(input: {
       storage_path: attachment.storagePath, mime_type: attachment.mimeType,
       width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
     })),
+    p_attachment_target: input.attachmentTarget ?? "user",
     p_assistant_payload: null,
   });
   if (error) throw error;
   const result = data as { chat?: Record<string, unknown>; userMessage?: PersistedMessage; assistantMessage?: PersistedMessage } | null;
   if (!result?.chat || !result.userMessage || !result.assistantMessage) throw new Error("The initial exchange was not returned by the database.");
   return result as { chat: Record<string, unknown>; userMessage: PersistedMessage; assistantMessage: PersistedMessage };
+}
+
+export async function persistImageChatExchange(input: {
+  chatId: string; profileId: string; userContent: string; attachment: AttachmentInput;
+}) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("persist_image_chat_exchange", {
+    p_chat_id: input.chatId, p_profile_id: input.profileId, p_user_content: input.userContent,
+    p_attachment: { storage_path: input.attachment.storagePath, mime_type: input.attachment.mimeType,
+      width: input.attachment.width ?? null, height: input.attachment.height ?? null,
+      size_bytes: input.attachment.sizeBytes ?? null },
+  });
+  if (error) throw error;
+  const result = data as { userMessage?: PersistedMessage; assistantMessage?: PersistedMessage } | null;
+  if (!result?.userMessage || !result.assistantMessage) throw new Error("The persisted image exchange was not returned by the database.");
+  return result as { userMessage: PersistedMessage; assistantMessage: PersistedMessage };
 }
 
 export async function addAttachments(messageId: string, attachments: AttachmentInput[]) {

@@ -16,6 +16,7 @@ import {
   Modal,
   ScrollArea,
   Select,
+  SegmentedControl,
   Stack,
   Text,
   TextInput,
@@ -80,6 +81,8 @@ type Message = {
   content_text: string;
   answer_mode?: AnswerMode | null;
   attachments?: { signedUrl: string; mimeType: string; storagePath: string }[];
+  generation_type?: "text" | "image";
+  image_alt?: string;
 };
 
 type ChatShellProps = {
@@ -91,8 +94,10 @@ type PendingExchange = {
   ownerKey: string;
   content: string;
   answerMode: AnswerMode;
+  generationType: "text" | "image";
   attachments: { storagePath: string; mimeType: string; sizeBytes: number; signedUrl: string }[];
   status: "loading" | "error";
+  errorMessage?: string;
 };
 
 export function ChatShell({ chatId }: ChatShellProps) {
@@ -116,6 +121,8 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [content, setContent] = useState("");
   const [answerMode, setAnswerMode] = useState<AnswerMode>(DEFAULT_ANSWER_MODE);
+  const [generationType, setGenerationType] = useState<"text" | "image">("text");
+  const [aspectRatio, setAspectRatio] = useState<"1:1" | "16:9" | "9:16">("1:1");
   const [navbarOpened, { toggle: toggleNavbar, close: closeNavbar }] = useDisclosure(false);
   const [asideOpened, { toggle: toggleAside }] = useDisclosure(false);
   const [pendingAttachments, setPendingAttachments] = useState<
@@ -441,33 +448,36 @@ export function ChatShell({ chatId }: ChatShellProps) {
     sendRequestPending.current = true;
     const submittedContent = content;
     const submittedAnswerMode = answerMode;
+    const submittedGenerationType = generationType;
     const submittedAttachments = [...pendingAttachments];
     const ownerKey = conversationOwnerKey;
     const requestId = ++requestSequence.current;
     const isInitial = !activeChatId;
     setPendingExchange({
-      requestId, ownerKey, content: submittedContent, answerMode: submittedAnswerMode,
+      requestId, ownerKey, content: submittedContent, answerMode: submittedAnswerMode, generationType: submittedGenerationType,
       attachments: submittedAttachments, status: "loading",
     });
     setContent("");
     setPendingAttachments([]);
     setSending(true);
+    let responseErrorCode = "";
+    let responseErrorMessage = "";
     try {
-      const response = await fetch(isInitial ? "/api/chats/initial-exchange" : `/api/chats/${activeChatId}/messages`, {
+      const response = await fetch(submittedGenerationType === "image"
+        ? (isInitial ? "/api/chats/initial-image-exchange" : `/api/chats/${activeChatId}/images`)
+        : (isInitial ? "/api/chats/initial-exchange" : `/api/chats/${activeChatId}/messages`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: submittedContent,
-          answerMode: submittedAnswerMode,
-          ...(isInitial ? { folderId: draftFolderId } : {}),
-          attachments: submittedAttachments.map((item) => ({
-            storagePath: item.storagePath,
-            mimeType: item.mimeType,
-            sizeBytes: item.sizeBytes,
-          })),
+        body: JSON.stringify(submittedGenerationType === "image" ? {
+          content: submittedContent, aspectRatio, ...(isInitial ? { folderId: draftFolderId } : {}),
+        } : {
+          content: submittedContent, answerMode: submittedAnswerMode, ...(isInitial ? { folderId: draftFolderId } : {}),
+          attachments: submittedAttachments.map((item) => ({ storagePath: item.storagePath, mimeType: item.mimeType, sizeBytes: item.sizeBytes })),
         }),
       });
       const json = await response.json();
+      responseErrorCode = typeof json?.error?.code === "string" ? json.error.code : "";
+      responseErrorMessage = typeof json?.error?.message === "string" ? json.error.message : "";
       if (!response.ok) throw new Error(json?.error?.message ?? "The message could not be sent.");
 
       if (activeOwnerRef.current !== ownerKey) return;
@@ -476,20 +486,28 @@ export function ChatShell({ chatId }: ChatShellProps) {
         setChats((current) => sort === "oldest" ? [...current, createdChat] : [createdChat, ...current]);
         setMessages([
           { ...json.data.userMessage, attachments: submittedAttachments },
-          json.data.assistantMessage,
+          { ...json.data.assistantMessage, generation_type: submittedGenerationType, image_alt: submittedContent },
         ]);
         setPendingExchange(null);
         setActiveChatFolderId(createdChat.folder_id);
         setDraftFolderId(null);
         router.push(chatHref(createdChat.id));
       } else {
-        setMessages((current) => [...current, json.data.userMessage, json.data.assistantMessage]);
+        setMessages((current) => [...current, json.data.userMessage, { ...json.data.assistantMessage, generation_type: submittedGenerationType, image_alt: submittedContent }]);
         setPendingExchange(null);
       }
     } catch (error) {
       if (activeOwnerRef.current === ownerKey) {
+        const code = responseErrorCode;
+        const safeImageMessage = code === "BFL_SUBMISSION_UNCERTAIN" || code === "BFL_POLLING_ERROR" || code === "BFL_TIMEOUT"
+          ? "The image request could not be confirmed. Please check before trying again."
+          : code === "IMAGE_STORAGE_ERROR" || code === "IMAGE_PERSISTENCE_ERROR" || code === "BFL_DOWNLOAD_ERROR" || code === "IMAGE_VALIDATION_ERROR"
+            ? "The image was generated, but the application could not save it."
+            : code === "BFL_CONFIGURATION_ERROR" || code === "BFL_SUBMISSION_ERROR"
+              ? responseErrorMessage || "The image service is temporarily unavailable."
+              : submittedGenerationType === "image" ? "Image generation failed." : undefined;
         setPendingExchange((current) => current?.requestId === requestId
-          ? { ...current, status: "error" }
+          ? { ...current, status: "error", errorMessage: safeImageMessage }
           : current);
         setPendingAttachments(submittedAttachments);
       }
@@ -718,6 +736,11 @@ export function ChatShell({ chatId }: ChatShellProps) {
 
       <AppShell.Aside p="sm">
         <Stack gap="sm">
+          <Text fw={600}>Generation Type</Text>
+          <SegmentedControl aria-label="Generation type" value={generationType} disabled={sending}
+            onChange={(value) => setGenerationType(value === "image" ? "image" : "text")}
+            data={[{ value: "text", label: "Text" }, { value: "image", label: "Image" }]} />
+          {generationType === "text" ? <>
           <Text fw={600}>Answer Mode</Text>
           <Select
             aria-label="Answer mode"
@@ -735,6 +758,13 @@ export function ChatShell({ chatId }: ChatShellProps) {
           <Text size="sm" c="dimmed">
             {ANSWER_MODES[answerMode].description}
           </Text>
+          </> : <>
+            <Text fw={600}>Image Generation</Text>
+            <Text size="sm" c="dimmed">Model</Text><Text size="sm" fw={500}>FLUX.2 Klein 4B</Text>
+            <Select aria-label="Aspect ratio" label="Aspect Ratio" value={aspectRatio} allowDeselect={false}
+              disabled={sending} onChange={(value) => setAspectRatio(value === "16:9" || value === "9:16" ? value : "1:1")}
+              data={["1:1", "16:9", "9:16"]} />
+          </>}
         </Stack>
       </AppShell.Aside>
 
@@ -754,8 +784,9 @@ export function ChatShell({ chatId }: ChatShellProps) {
                       role: "user", content_text: visiblePendingExchange.content,
                       attachments: visiblePendingExchange.attachments,
                     }} />
-                    <MessageCard pendingStatus={visiblePendingExchange.status} message={{
+                    <MessageCard pendingStatus={visiblePendingExchange.status} pendingErrorMessage={visiblePendingExchange.errorMessage} message={{
                       role: "assistant", content_text: "", answer_mode: visiblePendingExchange.answerMode,
+                      generation_type: visiblePendingExchange.generationType, image_alt: visiblePendingExchange.content,
                     }} />
                   </>
                 ) : null}
@@ -784,7 +815,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
             ) : null}
 
             <Stack gap="xs">
-              {pendingAttachments.length ? (
+              {generationType === "text" && pendingAttachments.length ? (
                 <Group>
                   {pendingAttachments.map((attachment) => (
                     <Box
@@ -832,14 +863,14 @@ export function ChatShell({ chatId }: ChatShellProps) {
                   disabled={sending}
                   style={{ flex: 1 }}
                 />
-                <FileButton onChange={uploadImage} accept="image/png,image/jpeg,image/webp,image/gif" disabled={sending}>
+                {generationType === "text" ? <FileButton onChange={uploadImage} accept="image/png,image/jpeg,image/webp,image/gif" disabled={sending}>
                   {(props) => (
                     <ActionIcon variant="light" size="lg" {...props} aria-label="upload-image">
                       <IconPhoto size={18} />
                     </ActionIcon>
                   )}
-                </FileButton>
-                <ActionIcon size="lg" onClick={sendMessage} loading={sending} aria-label="send">
+                </FileButton> : null}
+                <ActionIcon size="lg" onClick={sendMessage} loading={sending} disabled={!content.trim()} aria-label="send">
                   <IconSend size={18} />
                 </ActionIcon>
               </Group>

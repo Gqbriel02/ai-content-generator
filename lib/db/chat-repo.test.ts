@@ -230,6 +230,19 @@ describe("persistInitialChatExchange", () => {
       userContent: "Prompt", assistantContent: "Reply", assistantAnswerMode: "standard", attachments: [],
     })).rejects.toThrow("transaction failed");
   });
+
+  it("matches migration 0008 for an assistant image attachment and nullable answer mode", async () => {
+    rpc.mockResolvedValue({ data: { chat: { id: "chat" }, userMessage: { id: "user" }, assistantMessage: { id: "assistant", answer_mode: null } }, error: null });
+    await persistInitialChatExchange({ profileId: "profile", folderId: null, title: "Image", modelName: "flux-2-klein-4b",
+      userContent: "Prompt", assistantContent: "", assistantAnswerMode: null, attachmentTarget: "assistant",
+      attachments: [{ storagePath: "profile/generated/id.webp", mimeType: "image/webp", width: 1024, height: 1024, sizeBytes: 42 }] });
+    expect(rpc).toHaveBeenCalledWith("persist_initial_chat_exchange", {
+      p_profile_id: "profile", p_folder_id: null, p_title: "Image", p_model_name: "flux-2-klein-4b",
+      p_user_content: "Prompt", p_assistant_content: "", p_assistant_answer_mode: null,
+      p_attachments: [{ storage_path: "profile/generated/id.webp", mime_type: "image/webp", width: 1024, height: 1024, size_bytes: 42 }],
+      p_attachment_target: "assistant", p_assistant_payload: null,
+    });
+  });
 });
 
 describe("chat history", () => {

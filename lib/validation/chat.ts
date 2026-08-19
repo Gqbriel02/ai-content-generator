@@ -57,3 +57,12 @@ export const createMessageSchema = z.object({
 export const createInitialExchangeSchema = createMessageSchema.extend({
   folderId: z.string().uuid().nullable().default(null),
 }).strict();
+
+export const createImageSchema = z.object({
+  content: z.string().trim().min(1).max(12000),
+  aspectRatio: z.enum(["1:1", "16:9", "9:16"]),
+}).strict();
+
+export const createInitialImageSchema = createImageSchema.extend({
+  folderId: z.string().uuid().nullable().default(null),
+}).strict();
