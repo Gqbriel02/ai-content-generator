@@ -4,7 +4,8 @@ import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
 import { createSignedReadUrl, deleteAttachmentObjects } from "@/lib/storage/attachments";
 import { parseTextExchangeRequest } from "@/lib/http/text-exchange-request";
-import { pendingImageDataUrl, persistUploadedImages } from "@/lib/storage/uploaded-images";
+import { persistUploadedImages } from "@/lib/storage/uploaded-images";
+import { createLmStudioImageDataUrl, LmStudioImagePreparationError } from "@/lib/ai/lmstudio-image";
 import { generateAssistantReply, generateChatTitle, LmStudioError } from "@/lib/ai/lmstudio";
 import { resolveInitialChatTitle } from "@/lib/ai/chat-title";
 
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   if (hitRateLimit(`chat:${auth.session.profileId}`, 40)) return fail("You have reached the request limit. Please try again in one minute.", 429);
 
   try {
-    const attachments = parsed.files.map((item) => ({ dataUrl: pendingImageDataUrl(item), mimeType: item.mimeType }));
+    const attachments = await Promise.all(parsed.files.map(createLmStudioImageDataUrl));
     const assistantText = await generateAssistantReply([{ role: "user", contentText: parsed.content, attachments }], parsed.answerMode);
     let generatedTitle: string | null = null;
     try {
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
       return ok({ ...result, userMessage: { ...result.userMessage, attachments: [] }, warning: { code: "ATTACHMENT_SIGNED_URL_ERROR" } }, { status: 201 });
     }
   } catch (error) {
+    if (error instanceof LmStudioImagePreparationError) return fail(error.message, 422);
     if (error instanceof LmStudioError) return fail(error.message, error.status);
     console.error("Unable to create initial chat exchange.", error);
     return fail("The generated response could not be saved. Please try again.", 500);

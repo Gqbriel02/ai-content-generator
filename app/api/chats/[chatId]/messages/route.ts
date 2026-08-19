@@ -9,7 +9,8 @@ import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
 import { createSignedReadUrl, deleteAttachmentObjects } from "@/lib/storage/attachments";
 import { parseTextExchangeRequest } from "@/lib/http/text-exchange-request";
-import { pendingImageDataUrl, persistUploadedImages } from "@/lib/storage/uploaded-images";
+import { persistUploadedImages } from "@/lib/storage/uploaded-images";
+import { createLmStudioImageDataUrl, LmStudioImagePreparationError } from "@/lib/ai/lmstudio-image";
 import { generateAssistantReply, LmStudioError } from "@/lib/ai/lmstudio";
 import { z } from "zod";
 
@@ -98,16 +99,16 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
     return fail("The conversation could not be loaded. Please try again.", 500);
   }
 
-  messagesForModel.push({
-    role: "user",
-    contentText: parsed.content,
-    attachments: parsed.files.map((item) => ({ dataUrl: pendingImageDataUrl(item), mimeType: item.mimeType })),
-  });
-
   let assistantText = "";
   try {
+    messagesForModel.push({
+      role: "user",
+      contentText: parsed.content,
+      attachments: await Promise.all(parsed.files.map(createLmStudioImageDataUrl)),
+    });
     assistantText = await generateAssistantReply(messagesForModel, parsed.answerMode);
   } catch (error) {
+    if (error instanceof LmStudioImagePreparationError) return fail(error.message, 422);
     if (error instanceof LmStudioError) {
       return fail(error.message, error.status);
     }

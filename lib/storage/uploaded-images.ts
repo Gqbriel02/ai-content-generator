@@ -29,10 +29,6 @@ export async function validatePendingImages(files: File[]): Promise<PendingImage
   }));
 }
 
-export function pendingImageDataUrl(image: PendingImage) {
-  return `data:${image.mimeType};base64,${Buffer.from(image.bytes).toString("base64")}`;
-}
-
 export async function persistUploadedImages(input: { profileId: string; chatId: string; images: PendingImage[] }) {
   const stored: { storagePath: string; mimeType: string; sizeBytes: number }[] = [];
   try {
