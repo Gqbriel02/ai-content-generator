@@ -81,7 +81,7 @@ type Message = {
   role: "system" | "user" | "assistant" | "tool";
   content_text: string;
   answer_mode?: AnswerMode | null;
-  attachments?: { signedUrl: string; mimeType: string; storagePath: string }[];
+  attachments?: { id?: string; signedUrl: string; mimeType: string; storagePath: string }[];
   generation_type?: "text" | "image";
   image_alt?: string;
 };

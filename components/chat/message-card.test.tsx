@@ -50,24 +50,43 @@ describe("MessageCard", () => {
     expect(image.style.width).toBe("150px");
     expect(image.style.maxWidth).toBe("100%");
     expect(image.style.maxHeight).toBe("");
+    image.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("centers generated assistant images within a responsive maximum display box", async () => {
+  it("keeps generated images compact and opens and closes the enlarged viewer", async () => {
     await act(async () => root.render(
       <MantineProvider><MessageCard message={{
         role: "assistant", content_text: "", generation_type: "image", image_alt: "Generated result",
-        attachments: [{ storagePath: "generated/result.webp", mimeType: "image/webp", signedUrl: "signed-url" }],
+        attachments: [{ id: "attachment-id", storagePath: "generated/result.webp", mimeType: "image/webp", signedUrl: "signed-url" }],
       }} /></MantineProvider>,
     ));
 
-    const image = document.querySelector('img[alt="Generated result"]') as HTMLImageElement;
+    const openButton = document.querySelector('button[aria-label="View generated image"]') as HTMLButtonElement;
+    const image = openButton.querySelector("img") as HTMLImageElement;
     expect(image.style.width).toBe("auto");
     expect(image.style.height).toBe("auto");
-    expect(image.style.maxWidth).toBe("min(100%, 620px)");
-    expect(image.style.maxHeight).toBe("520px");
+    expect(image.style.maxWidth).toBe("min(100%, 520px)");
+    expect(image.style.maxHeight).toBe("320px");
     expect(image.style.objectFit).toBe("contain");
-    expect(image.parentElement?.className).toContain("mantine-Group-root");
-    expect(image.parentElement?.style.getPropertyValue("--group-justify")).toBe("center");
+    expect(openButton.style.cursor).toBe("zoom-in");
+
+    await act(async () => openButton.click());
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.querySelectorAll('img[alt="Generated result"]')).toHaveLength(2);
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    const header = dialog.querySelector("header") as HTMLElement;
+    const downloadButtons = [...dialog.querySelectorAll("button")]
+      .filter((button) => button.textContent?.includes("Download"));
+    expect(header.textContent).toContain("Generated image");
+    expect(header.contains(downloadButtons[0])).toBe(true);
+    expect(downloadButtons).toHaveLength(1);
+    expect(header.querySelector('button[aria-label="Close image viewer"]')).not.toBeNull();
+    expect(dialog.querySelector(".mantine-Modal-body")?.textContent).not.toContain("Download");
+
+    const closeButton = document.querySelector('button[aria-label="Close image viewer"]') as HTMLButtonElement;
+    await act(async () => closeButton.click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("replaces loading with a non-cancellation failure state", async () => {

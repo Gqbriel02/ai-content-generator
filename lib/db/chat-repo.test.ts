@@ -16,7 +16,53 @@ import {
   updateChatRating,
   renameOwnedChat,
   moveOwnedChat,
+  findAttachmentByMessage,
+  findOwnedGeneratedAttachment,
 } from "./chat-repo";
+
+describe("generated image attachments", () => {
+  it("resolves a persisted attachment ID by authoritative message and storage path", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "attachment-id", storage_path: "owner/chat/generated/id.webp", mime_type: "image/webp" }, error: null });
+    const pathEq = vi.fn(() => ({ maybeSingle }));
+    const messageEq = vi.fn(() => ({ eq: pathEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ eq: messageEq })) });
+
+    await expect(findAttachmentByMessage("message-id", "owner/chat/generated/id.webp"))
+      .resolves.toMatchObject({ id: "attachment-id" });
+    expect(messageEq).toHaveBeenCalledWith("message_id", "message-id");
+    expect(pathEq).toHaveBeenCalledWith("storage_path", "owner/chat/generated/id.webp");
+  });
+
+  it("returns only an owned assistant generated-image attachment", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: {
+      id: "attachment-id", storage_path: "owner/chat/generated/id.webp", mime_type: "image/webp",
+    }, error: null });
+    const profileEq = vi.fn(() => ({ maybeSingle }));
+    const roleEq = vi.fn(() => ({ eq: profileEq }));
+    const idEq = vi.fn(() => ({ eq: roleEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ eq: idEq })) });
+
+    await expect(findOwnedGeneratedAttachment("owner", "attachment-id")).resolves.toEqual({
+      id: "attachment-id", storagePath: "owner/chat/generated/id.webp", mimeType: "image/webp",
+    });
+    expect(idEq).toHaveBeenCalledWith("id", "attachment-id");
+    expect(roleEq).toHaveBeenCalledWith("messages.role", "assistant");
+    expect(profileEq).toHaveBeenCalledWith("messages.chats.profile_id", "owner");
+  });
+
+  it.each([
+    null,
+    { id: "attachment-id", storage_path: "owner/chat/uploaded/id.webp", mime_type: "image/webp" },
+    { id: "attachment-id", storage_path: "owner/chat/generated/id.txt", mime_type: "text/plain" },
+  ])("rejects missing or non-generated-image records", async (data) => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data, error: null });
+    const profileEq = vi.fn(() => ({ maybeSingle }));
+    const roleEq = vi.fn(() => ({ eq: profileEq }));
+    const idEq = vi.fn(() => ({ eq: roleEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ eq: idEq })) });
+    await expect(findOwnedGeneratedAttachment("owner", "attachment-id")).resolves.toBeNull();
+  });
+});
 
 describe("moveOwnedChat", () => {
   beforeEach(() => from.mockReset());

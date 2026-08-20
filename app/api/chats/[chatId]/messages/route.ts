@@ -49,7 +49,8 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/chats/[chat
       ...message,
       attachments: await Promise.all(
         (message.message_attachments ?? []).map(
-          async (attachment: { storage_path: string; mime_type: string }) => ({
+          async (attachment: { id: string; storage_path: string; mime_type: string }) => ({
+            id: attachment.id,
             storagePath: attachment.storage_path,
             mimeType: attachment.mime_type,
             signedUrl: await createSignedReadUrl(attachment.storage_path),

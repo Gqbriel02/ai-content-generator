@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { BflImageError } from "@/lib/ai/bfl";
 import { IMAGE_ASPECT_RATIOS } from "@/lib/ai/image-config";
 import { generateAndStoreImage } from "@/lib/ai/image-service";
-import { findChatById, persistImageChatExchange } from "@/lib/db/chat-repo";
+import { findAttachmentByMessage, findChatById, persistImageChatExchange } from "@/lib/db/chat-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
 import { createSignedReadUrl, deleteAttachmentObjects, GeneratedImageStorageError } from "@/lib/storage/attachments";
@@ -25,9 +25,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
     const result = await persistImageChatExchange({ chatId, profileId: auth.session.profileId, userContent: parsed.data.content, attachment });
     persisted = true; console.info(`[image-generation] imageRequestId=${imageRequestId} stage=db-persist success`);
     try {
+      const persistedAttachment = await findAttachmentByMessage(result.assistantMessage.id, attachment.storagePath);
+      if (!persistedAttachment) throw new Error("The persisted attachment was not returned.");
       const signedUrl = await createSignedReadUrl(attachment.storagePath);
       console.info(`[image-generation] imageRequestId=${imageRequestId} stage=signed-url success`);
-      return ok({ ...result, assistantMessage: { ...result.assistantMessage, attachments: [{ ...attachment, signedUrl }] } });
+      return ok({ ...result, assistantMessage: { ...result.assistantMessage, attachments: [{ ...attachment, id: persistedAttachment.id, signedUrl }] } });
     } catch (error) {
       console.info(`[image-generation] imageRequestId=${imageRequestId} stage=signed-url failed code=${error instanceof Error ? error.name : "unknown"}`);
       return ok({ ...result, assistantMessage: { ...result.assistantMessage, content_text: "The image was saved, but it could not be displayed. Refresh the chat to try loading it again.", attachments: [] }, warning: { code: "IMAGE_SIGNED_URL_ERROR" } });

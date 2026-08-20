@@ -279,6 +279,46 @@ export async function listMessages(chatId: string) {
   return data;
 }
 
+export async function findAttachmentByMessage(messageId: string, storagePath: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("message_attachments")
+    .select("id, storage_path, mime_type")
+    .eq("message_id", messageId)
+    .eq("storage_path", storagePath)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+type OwnedAttachmentRecord = {
+  id: string;
+  storage_path: string;
+  mime_type: string;
+  messages?: { role?: string; chats?: { profile_id?: string } | null } | null;
+};
+
+export async function findOwnedGeneratedAttachment(profileId: string, attachmentId: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("message_attachments")
+    .select("id, storage_path, mime_type, messages!inner(role, chats!inner(profile_id))")
+    .eq("id", attachmentId)
+    .eq("messages.role", "assistant")
+    .eq("messages.chats.profile_id", profileId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const attachment = data as OwnedAttachmentRecord | null;
+  if (!attachment || !attachment.mime_type.startsWith("image/") ||
+      !attachment.storage_path.split("/").includes("generated")) return null;
+  return {
+    id: attachment.id,
+    storagePath: attachment.storage_path,
+    mimeType: attachment.mime_type,
+  };
+}
+
 export async function createMessage(input: {
   chatId: string;
   role: "system" | "user" | "assistant" | "tool";

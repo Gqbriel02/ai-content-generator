@@ -29,6 +29,13 @@ export async function createAttachmentDataUrl(storagePath: string, mimeType: str
   return `data:${mimeType};base64,${base64}`;
 }
 
+export async function downloadAttachmentObject(storagePath: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).download(storagePath);
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteAttachmentObjects(storagePaths: string[]) {
   if (!storagePaths.length) return;
 

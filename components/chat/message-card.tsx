@@ -6,12 +6,13 @@ import { marked } from "marked";
 import DOMPurify from "isomorphic-dompurify";
 import { useMemo } from "react";
 import { getAnswerModeLabel, type AnswerMode } from "@/lib/ai/answer-modes";
+import { GeneratedImageViewer } from "@/components/chat/generated-image-viewer";
 
 export type DisplayMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content_text: string;
   answer_mode?: AnswerMode | null;
-  attachments?: { signedUrl: string; mimeType: string; storagePath: string }[];
+  attachments?: { id?: string; signedUrl: string; mimeType: string; storagePath: string }[];
   generation_type?: "text" | "image";
   image_alt?: string;
 };
@@ -65,10 +66,20 @@ export function MessageCard({ message, pendingStatus, pendingErrorMessage }: Pro
       {message.attachments?.length ? (
         <Group mt="sm" justify={isGeneratedAssistantImage ? "center" : undefined} style={{ maxWidth: "100%" }}>
           {message.attachments.map((attachment) => (
-            <img key={attachment.storagePath} src={attachment.signedUrl} alt={message.image_alt ?? (message.role === "user" ? "Attachment" : "Generated image")}
-              style={isGeneratedAssistantImage
-                ? { width: "auto", height: "auto", maxWidth: "min(100%, 520px)", maxHeight: 320, borderRadius: 8, objectFit: "contain" }
-                : { width: 150, height: "auto", borderRadius: 8, objectFit: "contain", maxWidth: "100%" }} />
+            isGeneratedAssistantImage && attachment.id ? (
+              <GeneratedImageViewer
+                key={attachment.storagePath}
+                attachmentId={attachment.id}
+                signedUrl={attachment.signedUrl}
+                alt={message.image_alt ?? "Generated image"}
+                inlineStyle={{ width: "auto", height: "auto", maxWidth: "min(100%, 520px)", maxHeight: 320, borderRadius: 8, objectFit: "contain" }}
+              />
+            ) : (
+              <img key={attachment.storagePath} src={attachment.signedUrl} alt={message.image_alt ?? (message.role === "user" ? "Attachment" : "Generated image")}
+                style={isGeneratedAssistantImage
+                  ? { width: "auto", height: "auto", maxWidth: "min(100%, 520px)", maxHeight: 320, borderRadius: 8, objectFit: "contain" }
+                  : { width: 150, height: "auto", borderRadius: 8, objectFit: "contain", maxWidth: "100%" }} />
+            )
           ))}
         </Group>
       ) : null}
