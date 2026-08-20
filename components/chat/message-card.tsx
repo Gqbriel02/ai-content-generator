@@ -30,6 +30,7 @@ function MarkdownView({ value }: { value: string }) {
 export function MessageCard({ message, pendingStatus, pendingErrorMessage }: Props) {
   const isImageGeneration = message.generation_type === "image" ||
     (message.role === "assistant" && !message.content_text && Boolean(message.attachments?.length));
+  const isGeneratedAssistantImage = message.role === "assistant" && isImageGeneration;
   return (
     <Box
       p="md"
@@ -62,10 +63,12 @@ export function MessageCard({ message, pendingStatus, pendingErrorMessage }: Pro
         <MarkdownView value={message.content_text || ""} />
       )}
       {message.attachments?.length ? (
-        <Group mt="sm" style={{ maxWidth: "100%" }}>
+        <Group mt="sm" justify={isGeneratedAssistantImage ? "center" : undefined} style={{ maxWidth: "100%" }}>
           {message.attachments.map((attachment) => (
             <img key={attachment.storagePath} src={attachment.signedUrl} alt={message.image_alt ?? (message.role === "user" ? "Attachment" : "Generated image")}
-              style={{ width: message.role === "assistant" && !message.content_text ? "min(100%, 768px)" : 150, height: "auto", borderRadius: 8, objectFit: "contain", maxWidth: "100%" }} />
+              style={isGeneratedAssistantImage
+                ? { width: "auto", height: "auto", maxWidth: "min(100%, 520px)", maxHeight: 320, borderRadius: 8, objectFit: "contain" }
+                : { width: 150, height: "auto", borderRadius: 8, objectFit: "contain", maxWidth: "100%" }} />
           ))}
         </Group>
       ) : null}

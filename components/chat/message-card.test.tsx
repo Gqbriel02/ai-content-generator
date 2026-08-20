@@ -45,7 +45,29 @@ describe("MessageCard", () => {
       }} /></MantineProvider>,
     ));
     expect(document.body.textContent).toContain("Pending prompt");
-    expect(document.querySelector('img[alt="Attachment"]')?.getAttribute("src")).toBe("preview-url");
+    const image = document.querySelector('img[alt="Attachment"]') as HTMLImageElement;
+    expect(image.getAttribute("src")).toBe("preview-url");
+    expect(image.style.width).toBe("150px");
+    expect(image.style.maxWidth).toBe("100%");
+    expect(image.style.maxHeight).toBe("");
+  });
+
+  it("centers generated assistant images within a responsive maximum display box", async () => {
+    await act(async () => root.render(
+      <MantineProvider><MessageCard message={{
+        role: "assistant", content_text: "", generation_type: "image", image_alt: "Generated result",
+        attachments: [{ storagePath: "generated/result.webp", mimeType: "image/webp", signedUrl: "signed-url" }],
+      }} /></MantineProvider>,
+    ));
+
+    const image = document.querySelector('img[alt="Generated result"]') as HTMLImageElement;
+    expect(image.style.width).toBe("auto");
+    expect(image.style.height).toBe("auto");
+    expect(image.style.maxWidth).toBe("min(100%, 620px)");
+    expect(image.style.maxHeight).toBe("520px");
+    expect(image.style.objectFit).toBe("contain");
+    expect(image.parentElement?.className).toContain("mantine-Group-root");
+    expect(image.parentElement?.style.getPropertyValue("--group-justify")).toBe("center");
   });
 
   it("replaces loading with a non-cancellation failure state", async () => {
