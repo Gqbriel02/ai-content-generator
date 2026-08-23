@@ -27,4 +27,20 @@ describe("parseImageExchangeRequest", () => {
     for (let index = 0; index < 5; index++) form.append("files", png(`${index}.png`));
     await expect(parseImageExchangeRequest(new Request("http://local", { method: "POST", body: form }), false)).rejects.toThrow("INVALID_REQUEST");
   });
+
+  it("parses authoritative IDs without browser image bytes", async () => {
+    const form = new FormData(); form.set("content", "make it greener"); form.set("aspectRatio", "1:1");
+    form.append("referenceAttachmentIds", "00000000-0000-4000-8000-000000000011");
+    const parsed = await parseImageExchangeRequest(new Request("http://local", { method: "POST", body: form }), false);
+    expect(parsed.files).toEqual([]);
+    expect(parsed.referenceAttachmentIds).toEqual(["00000000-0000-4000-8000-000000000011"]);
+  });
+
+  it("enforces four references across local and existing sources", async () => {
+    const form = new FormData(); form.set("content", "combine"); form.set("aspectRatio", "1:1");
+    form.append("files", png()); form.append("files", png("second.png")); form.append("files", png("third.png"));
+    form.append("referenceAttachmentIds", "00000000-0000-4000-8000-000000000011");
+    form.append("referenceAttachmentIds", "00000000-0000-4000-8000-000000000012");
+    await expect(parseImageExchangeRequest(new Request("http://local", { method: "POST", body: form }), false)).rejects.toThrow("INVALID_REQUEST");
+  });
 });

@@ -36,6 +36,16 @@ export async function downloadAttachmentObject(storagePath: string) {
   return data;
 }
 
+export async function loadStoredImageReference(storagePath: string, mimeType: string) {
+  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mimeType)) {
+    throw new Error("Unsupported stored image type.");
+  }
+  const data = await downloadAttachmentObject(storagePath);
+  const bytes = await data.arrayBuffer();
+  if (!bytes.byteLength || bytes.byteLength > MAX_GENERATED_IMAGE_BYTES) throw new Error("Invalid stored image.");
+  return { bytes, mimeType, sizeBytes: bytes.byteLength, originalName: storagePath.split("/").at(-1) ?? "reference" };
+}
+
 export async function deleteAttachmentObjects(storagePaths: string[]) {
   if (!storagePaths.length) return;
 

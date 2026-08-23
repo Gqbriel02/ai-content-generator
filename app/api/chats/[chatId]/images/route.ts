@@ -4,10 +4,10 @@ import { requireSession } from "@/lib/auth/require-session";
 import { BflImageError } from "@/lib/ai/bfl";
 import { IMAGE_ASPECT_RATIOS } from "@/lib/ai/image-config";
 import { generateAndStoreImage } from "@/lib/ai/image-service";
-import { findAttachmentByMessage, findChatById, persistImageChatExchange } from "@/lib/db/chat-repo";
+import { findAttachmentByMessage, findChatById, findSameChatGeneratedAttachments, persistImageChatExchange } from "@/lib/db/chat-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
-import { createSignedReadUrl, deleteAttachmentObjects, GeneratedImageStorageError } from "@/lib/storage/attachments";
+import { createSignedReadUrl, deleteAttachmentObjects, GeneratedImageStorageError, loadStoredImageReference } from "@/lib/storage/attachments";
 import { parseImageExchangeRequest } from "@/lib/http/image-exchange-request";
 import { persistUploadedImages } from "@/lib/storage/uploaded-images";
 
@@ -20,18 +20,23 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
   catch { return fail("Enter a valid image prompt, aspect ratio, and up to four image attachments.", 400); }
   console.info(`[image-generation] imageRequestId=${imageRequestId} stage=validation success`);
   if (hitRateLimit(`image:${auth.session.profileId}`, 10)) return fail("The image service is busy. Please try again shortly.", 429);
+  const existingReferences = await findSameChatGeneratedAttachments(auth.session.profileId, chatId, parsed.referenceAttachmentIds);
+  if (!existingReferences) return fail("Image reference not found.", 404);
   const dimensions = IMAGE_ASPECT_RATIOS[parsed.aspectRatio]; let attachment; let uploaded: Awaited<ReturnType<typeof persistUploadedImages>> = []; let persisted = false;
   try {
+    const storedReferenceImages = await Promise.all(existingReferences.map((item) => loadStoredImageReference(item.storagePath, item.mimeType)));
     uploaded = await persistUploadedImages({ profileId: auth.session.profileId, chatId, images: parsed.files });
-    attachment = await generateAndStoreImage({ prompt: parsed.content, sourceImages: parsed.files, profileId: auth.session.profileId, chatId, imageRequestId, ...dimensions });
-    const result = await persistImageChatExchange({ chatId, profileId: auth.session.profileId, userContent: parsed.content, attachment, userAttachments: uploaded });
+    attachment = await generateAndStoreImage({ prompt: parsed.content, sourceImages: [...parsed.files, ...storedReferenceImages], profileId: auth.session.profileId, chatId, imageRequestId, ...dimensions });
+    const sourceAttachments = [...uploaded, ...existingReferences.map((item) => ({ storagePath: item.storagePath,
+      mimeType: item.mimeType, width: item.width, height: item.height, sizeBytes: item.sizeBytes }))];
+    const result = await persistImageChatExchange({ chatId, profileId: auth.session.profileId, userContent: parsed.content, attachment, userAttachments: sourceAttachments });
     persisted = true; console.info(`[image-generation] imageRequestId=${imageRequestId} stage=db-persist success`);
     try {
       const persistedAttachment = await findAttachmentByMessage(result.assistantMessage.id, attachment.storagePath);
       if (!persistedAttachment) throw new Error("The persisted attachment was not returned.");
       const signedUrl = await createSignedReadUrl(attachment.storagePath);
       console.info(`[image-generation] imageRequestId=${imageRequestId} stage=signed-url success`);
-      const userAttachments = await Promise.all(uploaded.map(async (item) => ({ ...item, signedUrl: await createSignedReadUrl(item.storagePath) })));
+      const userAttachments = await Promise.all(sourceAttachments.map(async (item) => ({ ...item, signedUrl: await createSignedReadUrl(item.storagePath) })));
       return ok({ ...result, userMessage: { ...result.userMessage, attachments: userAttachments }, assistantMessage: { ...result.assistantMessage, attachments: [{ ...attachment, id: persistedAttachment.id, signedUrl }] } });
     } catch (error) {
       console.info(`[image-generation] imageRequestId=${imageRequestId} stage=signed-url failed code=${error instanceof Error ? error.name : "unknown"}`);

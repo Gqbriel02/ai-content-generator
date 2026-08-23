@@ -90,7 +90,19 @@ type ChatShellProps = {
   chatId?: string;
 };
 
-type DraftAttachment = { id: string; file: File; mimeType: string; sizeBytes: number; signedUrl: string; storagePath: string };
+type DraftAttachment =
+  | { source: "local"; id: string; file: File; mimeType: string; sizeBytes: number; signedUrl: string; storagePath: string }
+  | { source: "existing"; id: string; attachmentId: string; mimeType: string; signedUrl: string; storagePath: string };
+
+export function buildImageRequestForm(content: string, aspectRatio: string, folderId: string | null, attachments: DraftAttachment[]) {
+  const form = new FormData();
+  form.set("content", content); form.set("aspectRatio", aspectRatio);
+  if (folderId) form.set("folderId", folderId);
+  attachments.forEach((item) => item.source === "local"
+    ? form.append("files", item.file, item.file.name)
+    : form.append("referenceAttachmentIds", item.attachmentId));
+  return form;
+}
 
 type PendingExchange = {
   requestId: number;
@@ -168,6 +180,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   }, []);
 
   function revokePreview(url: string) {
+    if (!previewUrlsRef.current.has(url)) return;
     URL.revokeObjectURL(url);
     previewUrlsRef.current.delete(url);
   }
@@ -450,7 +463,20 @@ export function ChatShell({ chatId }: ChatShellProps) {
     const id = createClientTemporaryId();
     const signedUrl = URL.createObjectURL(file);
     previewUrlsRef.current.add(signedUrl);
-    setPendingAttachments((previous) => [...previous, { id, file, mimeType: file.type, sizeBytes: file.size, signedUrl, storagePath: `local:${id}` }]);
+    setPendingAttachments((previous) => [...previous, { source: "local", id, file, mimeType: file.type, sizeBytes: file.size, signedUrl, storagePath: `local:${id}` }]);
+  }
+
+  function reuseGeneratedImage(reference: { attachmentId: string; previewUrl: string; mimeType: string }) {
+    setGenerationType("image");
+    setPendingAttachments((previous) => {
+      if (previous.some((item) => item.source === "existing" && item.attachmentId === reference.attachmentId)) return previous;
+      if (previous.length >= 4) {
+        notifications.show({ color: "red", title: "Attachment limit reached", message: "Image mode supports up to four reference images." });
+        return previous;
+      }
+      return [...previous, { source: "existing", id: reference.attachmentId, attachmentId: reference.attachmentId,
+        mimeType: reference.mimeType, signedUrl: reference.previewUrl, storagePath: `existing:${reference.attachmentId}` }];
+    });
   }
 
   async function sendMessage() {
@@ -477,20 +503,14 @@ export function ChatShell({ chatId }: ChatShellProps) {
       textForm.set("content", submittedContent);
       textForm.set("answerMode", submittedAnswerMode);
       if (isInitial && draftFolderId) textForm.set("folderId", draftFolderId);
-      submittedAttachments.forEach((item) => textForm.append("files", item.file, item.file.name));
+      submittedAttachments.forEach((item) => { if (item.source === "local") textForm.append("files", item.file, item.file.name); });
       const isImageRequest = submittedGenerationType === "image";
       const response = await fetch(isImageRequest
         ? (isInitial ? "/api/chats/initial-image-exchange" : `/api/chats/${activeChatId}/images`)
         : (isInitial ? "/api/chats/initial-exchange" : `/api/chats/${activeChatId}/messages`), {
         method: "POST",
-        body: isImageRequest ? (() => {
-          const form = new FormData();
-          form.set("content", submittedContent);
-          form.set("aspectRatio", aspectRatio);
-          if (isInitial && draftFolderId) form.set("folderId", draftFolderId);
-          submittedAttachments.forEach((item) => form.append("files", item.file, item.file.name));
-          return form;
-        })() : textForm,
+        body: isImageRequest ? buildImageRequestForm(submittedContent, aspectRatio,
+          isInitial ? draftFolderId : null, submittedAttachments) : textForm,
       });
       const json = await response.json();
       responseErrorCode = typeof json?.error?.code === "string" ? json.error.code : "";
@@ -789,7 +809,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
           <Stack gap="md" h="calc(100vh - 110px)">
             <ScrollArea type="auto" flex={1} offsetScrollbars style={{ backgroundColor: "#ffffff", borderRadius: 12 }}>
               <Stack gap="md" p="xs">
-                {messages.map((message) => <MessageCard key={message.id} message={message} />)}
+                {messages.map((message) => <MessageCard key={message.id} message={message} onReuseGeneratedImage={reuseGeneratedImage} />)}
                 {visiblePendingExchange ? (
                   <>
                     <MessageCard message={{

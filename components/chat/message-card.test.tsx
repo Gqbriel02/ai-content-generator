@@ -89,6 +89,22 @@ describe("MessageCard", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it("reuses the authoritative generated attachment and closes the viewer", async () => {
+    const onReuse = vi.fn();
+    await act(async () => root.render(
+      <MantineProvider><MessageCard onReuseGeneratedImage={onReuse} message={{
+        role: "assistant", content_text: "", generation_type: "image",
+        attachments: [{ id: "attachment-id", storagePath: "generated/result.webp", mimeType: "image/webp", signedUrl: "signed-url" }],
+      }} /></MantineProvider>,
+    ));
+    await act(async () => (document.querySelector('button[aria-label="View generated image"]') as HTMLButtonElement).click());
+    const reuse = [...document.querySelectorAll("button")].find((button) => button.textContent?.includes("Reuse")) as HTMLButtonElement;
+    expect(reuse.closest("header")).not.toBeNull();
+    await act(async () => reuse.click());
+    expect(onReuse).toHaveBeenCalledWith({ attachmentId: "attachment-id", previewUrl: "signed-url", mimeType: "image/webp" });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
   it("replaces loading with a non-cancellation failure state", async () => {
     await act(async () => root.render(
       <MantineProvider><MessageCard pendingStatus="error"

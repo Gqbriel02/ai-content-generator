@@ -319,6 +319,32 @@ export async function findOwnedGeneratedAttachment(profileId: string, attachment
   };
 }
 
+export async function findSameChatGeneratedAttachments(profileId: string, chatId: string, attachmentIds: string[]) {
+  if (!attachmentIds.length) return [];
+  const uniqueIds = [...new Set(attachmentIds)];
+  if (uniqueIds.length !== attachmentIds.length) return null;
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("message_attachments")
+    .select("id, storage_path, mime_type, width, height, size_bytes, messages!inner(chat_id, role, chats!inner(profile_id))")
+    .in("id", uniqueIds)
+    .eq("messages.chat_id", chatId)
+    .eq("messages.role", "assistant")
+    .eq("messages.chats.profile_id", profileId);
+  if (error) throw error;
+
+  const byId = new Map((data ?? []).map((attachment) => [attachment.id, attachment]));
+  const expectedPrefix = `${profileId}/${chatId}/generated/`;
+  const resolved = uniqueIds.map((id) => byId.get(id));
+  if (resolved.some((attachment) => !attachment || !attachment.mime_type.startsWith("image/") ||
+      !attachment.storage_path.startsWith(expectedPrefix))) return null;
+  return resolved.map((attachment) => ({
+    id: attachment!.id, storagePath: attachment!.storage_path, mimeType: attachment!.mime_type,
+    width: attachment!.width ?? undefined, height: attachment!.height ?? undefined,
+    sizeBytes: attachment!.size_bytes ?? undefined,
+  }));
+}
+
 export async function createMessage(input: {
   chatId: string;
   role: "system" | "user" | "assistant" | "tool";

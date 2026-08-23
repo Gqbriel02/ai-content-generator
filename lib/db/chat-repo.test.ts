@@ -12,12 +12,14 @@ import {
   listMessages,
   persistChatExchange,
   persistInitialChatExchange,
+  persistImageChatExchange,
   deleteOwnedChat,
   updateChatRating,
   renameOwnedChat,
   moveOwnedChat,
   findAttachmentByMessage,
   findOwnedGeneratedAttachment,
+  findSameChatGeneratedAttachments,
 } from "./chat-repo";
 
 describe("generated image attachments", () => {
@@ -61,6 +63,40 @@ describe("generated image attachments", () => {
     const idEq = vi.fn(() => ({ eq: roleEq }));
     from.mockReturnValueOnce({ select: vi.fn(() => ({ eq: idEq })) });
     await expect(findOwnedGeneratedAttachment("owner", "attachment-id")).resolves.toBeNull();
+  });
+
+  it("resolves ordered, same-chat generated references for the authenticated owner", async () => {
+    const result = { data: [{ id: "attachment-b", storage_path: "owner/chat/generated/b.webp", mime_type: "image/webp", width: 10, height: 10, size_bytes: 4 },
+      { id: "attachment-a", storage_path: "owner/chat/generated/a.webp", mime_type: "image/webp", width: 10, height: 10, size_bytes: 4 }], error: null };
+    const profileEq = vi.fn().mockResolvedValue(result);
+    const roleEq = vi.fn(() => ({ eq: profileEq }));
+    const chatEq = vi.fn(() => ({ eq: roleEq }));
+    const idsIn = vi.fn(() => ({ eq: chatEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ in: idsIn })) });
+    await expect(findSameChatGeneratedAttachments("owner", "chat", ["attachment-a", "attachment-b"]))
+      .resolves.toEqual([expect.objectContaining({ id: "attachment-a" }), expect.objectContaining({ id: "attachment-b" })]);
+    expect(chatEq).toHaveBeenCalledWith("messages.chat_id", "chat");
+    expect(roleEq).toHaveBeenCalledWith("messages.role", "assistant");
+    expect(profileEq).toHaveBeenCalledWith("messages.chats.profile_id", "owner");
+  });
+
+  it("hides missing, cross-chat, cross-user, and invalid-path generated references", async () => {
+    const profileEq = vi.fn().mockResolvedValue({ data: [], error: null });
+    const roleEq = vi.fn(() => ({ eq: profileEq })); const chatEq = vi.fn(() => ({ eq: roleEq }));
+    from.mockReturnValueOnce({ select: vi.fn(() => ({ in: vi.fn(() => ({ eq: chatEq })) })) });
+    await expect(findSameChatGeneratedAttachments("owner", "chat", ["missing"])).resolves.toBeNull();
+  });
+});
+
+describe("reused image persistence", () => {
+  it("passes a shared generated storage path as a new user attachment association", async () => {
+    rpc.mockResolvedValueOnce({ data: { userMessage: { id: "user" }, assistantMessage: { id: "assistant" } }, error: null });
+    await persistImageChatExchange({ chatId: "chat", profileId: "owner", userContent: "Make it greener",
+      attachment: { storagePath: "owner/chat/generated/new.webp", mimeType: "image/webp" },
+      userAttachments: [{ storagePath: "owner/chat/generated/original.webp", mimeType: "image/webp", sizeBytes: 3 }] });
+    expect(rpc).toHaveBeenCalledWith("persist_image_chat_exchange", expect.objectContaining({
+      p_user_attachments: [{ storage_path: "owner/chat/generated/original.webp", mime_type: "image/webp", width: null, height: null, size_bytes: 3 }],
+    }));
   });
 });
 

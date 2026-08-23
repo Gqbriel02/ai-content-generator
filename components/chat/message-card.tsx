@@ -21,6 +21,7 @@ type Props = {
   message: DisplayMessage;
   pendingStatus?: "loading" | "error";
   pendingErrorMessage?: string;
+  onReuseGeneratedImage?: (attachment: { attachmentId: string; previewUrl: string; mimeType: string }) => void;
 };
 
 function MarkdownView({ value }: { value: string }) {
@@ -28,7 +29,7 @@ function MarkdownView({ value }: { value: string }) {
   return <Box dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-export function MessageCard({ message, pendingStatus, pendingErrorMessage }: Props) {
+export function MessageCard({ message, pendingStatus, pendingErrorMessage, onReuseGeneratedImage }: Props) {
   const isImageGeneration = message.generation_type === "image" ||
     (message.role === "assistant" && !message.content_text && Boolean(message.attachments?.length));
   const isGeneratedAssistantImage = message.role === "assistant" && isImageGeneration;
@@ -73,6 +74,7 @@ export function MessageCard({ message, pendingStatus, pendingErrorMessage }: Pro
                 signedUrl={attachment.signedUrl}
                 alt={message.image_alt ?? "Generated image"}
                 inlineStyle={{ width: "auto", height: "auto", maxWidth: "min(100%, 520px)", maxHeight: 320, borderRadius: 8, objectFit: "contain" }}
+                onReuse={onReuseGeneratedImage ? () => onReuseGeneratedImage({ attachmentId: attachment.id!, previewUrl: attachment.signedUrl, mimeType: attachment.mimeType }) : undefined}
               />
             ) : (
               <img key={attachment.storagePath} src={attachment.signedUrl} alt={message.image_alt ?? (message.role === "user" ? "Attachment" : "Generated image")}

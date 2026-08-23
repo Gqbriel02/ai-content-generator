@@ -3,7 +3,7 @@
 
 import { Button, Group, Modal, UnstyledButton } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconDownload } from "@tabler/icons-react";
+import { IconDownload, IconRefresh } from "@tabler/icons-react";
 import { useState } from "react";
 
 type Props = {
@@ -11,6 +11,7 @@ type Props = {
   signedUrl: string;
   alt: string;
   inlineStyle: React.CSSProperties;
+  onReuse?: () => void;
 };
 
 function downloadFilename(response: Response) {
@@ -18,7 +19,7 @@ function downloadFilename(response: Response) {
   return disposition.match(/filename="([^"\\/]+)"/i)?.[1] ?? "generated-image.webp";
 }
 
-export function GeneratedImageViewer({ attachmentId, signedUrl, alt, inlineStyle }: Props) {
+export function GeneratedImageViewer({ attachmentId, signedUrl, alt, inlineStyle, onReuse }: Props) {
   const [opened, setOpened] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -59,6 +60,9 @@ export function GeneratedImageViewer({ attachmentId, signedUrl, alt, inlineStyle
           <Modal.Header>
             <Modal.Title style={{ minWidth: 0 }}>Generated image</Modal.Title>
             <Group gap="xs" wrap="nowrap">
+              {onReuse ? <Button size="sm" variant="light" leftSection={<IconRefresh size={18} />} onClick={() => { onReuse(); setOpened(false); }}>
+                Reuse
+              </Button> : null}
               <Button size="sm" leftSection={<IconDownload size={18} />} loading={downloading} onClick={downloadImage}>
                 Download
               </Button>
