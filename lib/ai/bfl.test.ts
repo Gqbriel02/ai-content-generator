@@ -21,6 +21,19 @@ describe("BFL image provider", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("https://poll.example/exact");
   });
 
+  it("sends only explicitly supplied current-request images as BFL references", async () => {
+    process.env.BFL_API_KEY = "test";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "id", polling_url: "https://poll.example/x" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "Ready", result: { sample: "https://delivery.example/image.webp" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    await generateImage({ prompt: "make it night", width: 1024, height: 1024, inputImages: ["current-base64"] }, { sleep: async () => {} });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      prompt: "make it night", input_image: "current-base64",
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("input_image_2");
+  });
+
   it.each([["Error"], ["Failed"]])("treats %s as terminal without another POST", async (status) => {
     process.env.BFL_API_KEY = "test";
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id: "id", polling_url: "https://poll.example/x" })))

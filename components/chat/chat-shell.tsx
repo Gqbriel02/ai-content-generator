@@ -443,7 +443,10 @@ export function ChatShell({ chatId }: ChatShellProps) {
       notifications.show({ color: "red", title: "Attachment rejected", message: "Choose a PNG, JPEG, WebP, or GIF image up to 8 MB." });
       return;
     }
-    if (pendingAttachments.length >= 8) return;
+    if (pendingAttachments.length >= (generationType === "image" ? 4 : 8)) {
+      notifications.show({ color: "red", title: "Attachment limit reached", message: generationType === "image" ? "Image mode supports up to four reference images." : "You can attach up to eight images." });
+      return;
+    }
     const id = createClientTemporaryId();
     const signedUrl = URL.createObjectURL(file);
     previewUrlsRef.current.add(signedUrl);
@@ -480,10 +483,14 @@ export function ChatShell({ chatId }: ChatShellProps) {
         ? (isInitial ? "/api/chats/initial-image-exchange" : `/api/chats/${activeChatId}/images`)
         : (isInitial ? "/api/chats/initial-exchange" : `/api/chats/${activeChatId}/messages`), {
         method: "POST",
-        ...(isImageRequest ? { headers: { "Content-Type": "application/json" } } : {}),
-        body: isImageRequest ? JSON.stringify({
-          content: submittedContent, aspectRatio, ...(isInitial ? { folderId: draftFolderId } : {}),
-        }) : textForm,
+        body: isImageRequest ? (() => {
+          const form = new FormData();
+          form.set("content", submittedContent);
+          form.set("aspectRatio", aspectRatio);
+          if (isInitial && draftFolderId) form.set("folderId", draftFolderId);
+          submittedAttachments.forEach((item) => form.append("files", item.file, item.file.name));
+          return form;
+        })() : textForm,
       });
       const json = await response.json();
       responseErrorCode = typeof json?.error?.code === "string" ? json.error.code : "";
@@ -820,7 +827,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
             ) : null}
 
             <Stack gap="xs">
-              {generationType === "text" && pendingAttachments.length ? (
+              {pendingAttachments.length ? (
                 <Group>
                   {pendingAttachments.map((attachment) => (
                     <Box
@@ -868,13 +875,13 @@ export function ChatShell({ chatId }: ChatShellProps) {
                   disabled={sending}
                   style={{ flex: 1 }}
                 />
-                {generationType === "text" ? <FileButton onChange={uploadImage} accept="image/png,image/jpeg,image/webp,image/gif" disabled={sending}>
+                <FileButton onChange={uploadImage} accept="image/png,image/jpeg,image/webp,image/gif" disabled={sending}>
                   {(props) => (
                     <ActionIcon variant="light" size="lg" {...props} aria-label="upload-image">
                       <IconPhoto size={18} />
                     </ActionIcon>
                   )}
-                </FileButton> : null}
+                </FileButton>
                 <ActionIcon size="lg" onClick={sendMessage} loading={sending} disabled={!content.trim()} aria-label="send">
                   <IconSend size={18} />
                 </ActionIcon>

@@ -30,10 +30,12 @@ function retryDelay(response: Response | null, attempt: number) {
   return Number.isFinite(seconds) ? Math.min(seconds * 1000, 5000) : Math.min(500 * 2 ** attempt, 4000);
 }
 
-export async function submitImageGeneration(input: { prompt: string; width: number; height: number }, apiKey: string, imageRequestId?: string) {
+export async function submitImageGeneration(input: { prompt: string; width: number; height: number; inputImages?: string[] }, apiKey: string, imageRequestId?: string) {
   log(imageRequestId, "bfl-submit", "started"); let response: Response;
   try { response = await fetch(BFL_GENERATION_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json", "x-key": apiKey },
-    body: JSON.stringify({ ...input, output_format: "webp", safety_tolerance: 2 }) }); }
+    body: JSON.stringify({ prompt: input.prompt, width: input.width, height: input.height,
+      ...Object.fromEntries((input.inputImages ?? []).map((image, index) => [index ? `input_image_${index + 1}` : "input_image", image])),
+      output_format: "webp", safety_tolerance: 2 }) }); }
   catch (error) { log(imageRequestId, "bfl-submit", `failed code=BFL_SUBMISSION_UNCERTAIN error=${error instanceof Error ? error.name : "unknown"}`);
     throw new BflImageError("The image request could not be confirmed. Please check before trying again.", 502, "BFL_SUBMISSION_UNCERTAIN"); }
   if (!response.ok) {
@@ -76,7 +78,7 @@ export async function pollImageGeneration(job: { requestId: string; pollingUrl: 
   throw new BflImageError("The existing image job timed out. Do not submit it again yet.", 504, "BFL_TIMEOUT");
 }
 
-export async function generateImage(input: { prompt: string; width: number; height: number }, options: {
+export async function generateImage(input: { prompt: string; width: number; height: number; inputImages?: string[] }, options: {
   now?: () => number; sleep?: (ms: number) => Promise<void>; imageRequestId?: string;
 } = {}) {
   const apiKey = process.env.BFL_API_KEY;

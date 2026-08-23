@@ -399,6 +399,7 @@ export async function persistInitialChatExchange(input: {
   assistantAnswerMode: AnswerMode | null;
   attachments: AttachmentInput[];
   attachmentTarget?: "user" | "assistant";
+  userAttachments?: AttachmentInput[];
 }) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.rpc("persist_initial_chat_exchange", {
@@ -415,6 +416,10 @@ export async function persistInitialChatExchange(input: {
       width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
     })),
     p_attachment_target: input.attachmentTarget ?? "user",
+    p_user_attachments: (input.userAttachments ?? []).map((attachment) => ({
+      storage_path: attachment.storagePath, mime_type: attachment.mimeType,
+      width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
+    })),
     p_assistant_payload: null,
   });
   if (error) throw error;
@@ -424,7 +429,7 @@ export async function persistInitialChatExchange(input: {
 }
 
 export async function persistImageChatExchange(input: {
-  chatId: string; profileId: string; userContent: string; attachment: AttachmentInput;
+  chatId: string; profileId: string; userContent: string; attachment: AttachmentInput; userAttachments?: AttachmentInput[];
 }) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.rpc("persist_image_chat_exchange", {
@@ -432,6 +437,10 @@ export async function persistImageChatExchange(input: {
     p_attachment: { storage_path: input.attachment.storagePath, mime_type: input.attachment.mimeType,
       width: input.attachment.width ?? null, height: input.attachment.height ?? null,
       size_bytes: input.attachment.sizeBytes ?? null },
+    p_user_attachments: (input.userAttachments ?? []).map((attachment) => ({
+      storage_path: attachment.storagePath, mime_type: attachment.mimeType,
+      width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
+    })),
   });
   if (error) throw error;
   const result = data as { userMessage?: PersistedMessage; assistantMessage?: PersistedMessage } | null;
