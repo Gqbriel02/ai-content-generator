@@ -7,7 +7,7 @@ import {
 } from "@/lib/db/chat-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { hitRateLimit } from "@/lib/http/rate-limit";
-import { createSignedReadUrl, deleteAttachmentObjects } from "@/lib/storage/attachments";
+import { createSignedReadUrl, deleteAttachmentObjects, isStorageObjectMissing } from "@/lib/storage/attachments";
 import { parseTextExchangeRequest } from "@/lib/http/text-exchange-request";
 import { persistUploadedImages } from "@/lib/storage/uploaded-images";
 import { createLmStudioImageDataUrl, LmStudioImagePreparationError } from "@/lib/ai/lmstudio-image";
@@ -49,12 +49,18 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/chats/[chat
       ...message,
       attachments: await Promise.all(
         (message.message_attachments ?? []).map(
-          async (attachment: { id: string; storage_path: string; mime_type: string }) => ({
-            id: attachment.id,
-            storagePath: attachment.storage_path,
-            mimeType: attachment.mime_type,
-            signedUrl: await createSignedReadUrl(attachment.storage_path),
-          }),
+          async (attachment: { id: string; storage_path: string; mime_type: string }) => {
+            try {
+              return { id: attachment.id, storagePath: attachment.storage_path, mimeType: attachment.mime_type,
+                signedUrl: await createSignedReadUrl(attachment.storage_path), availability: "available" as const };
+            } catch (error) {
+              if (isStorageObjectMissing(error)) console.info("[Storage] attachment object missing", { attachmentId: attachment.id });
+              else console.error("[Storage] attachment signed URL unavailable", { attachmentId: attachment.id,
+                errorName: error instanceof Error ? error.name : "unknown" });
+              return { id: attachment.id, storagePath: attachment.storage_path, mimeType: attachment.mime_type,
+                signedUrl: null, availability: "unavailable" as const };
+            }
+          },
         ),
       ),
     })),

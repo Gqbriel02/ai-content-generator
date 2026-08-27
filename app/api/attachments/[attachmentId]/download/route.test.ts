@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireSession, findOwnedGeneratedAttachment, downloadAttachmentObject } = vi.hoisted(() => ({
+const { requireSession, findOwnedGeneratedAttachment, downloadAttachmentObject, isStorageObjectMissing } = vi.hoisted(() => ({
   requireSession: vi.fn(),
   findOwnedGeneratedAttachment: vi.fn(),
   downloadAttachmentObject: vi.fn(),
+  isStorageObjectMissing: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-session", () => ({ requireSession }));
 vi.mock("@/lib/db/chat-repo", () => ({ findOwnedGeneratedAttachment }));
-vi.mock("@/lib/storage/attachments", () => ({ downloadAttachmentObject }));
+vi.mock("@/lib/storage/attachments", () => ({ downloadAttachmentObject, isStorageObjectMissing }));
 
 import { GET } from "./route";
 
@@ -22,6 +23,7 @@ describe("GET /api/attachments/[attachmentId]/download", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireSession.mockResolvedValue({ session: { profileId: "owner-profile" } });
+    isStorageObjectMissing.mockImplementation((error) => error?.statusCode === 404);
   });
 
   it("returns the original private object bytes with download headers for an owned generated image", async () => {
@@ -55,5 +57,13 @@ describe("GET /api/attachments/[attachmentId]/download", () => {
     const response = await GET(new Request("http://localhost"), context());
     expect(response!.status).toBe(401);
     expect(findOwnedGeneratedAttachment).not.toHaveBeenCalled();
+  });
+
+  it("returns controlled JSON 404 when the owned database attachment has no Storage object", async () => {
+    findOwnedGeneratedAttachment.mockResolvedValue({ id: ATTACHMENT_ID, storagePath: "generated/missing.webp", mimeType: "image/webp" });
+    downloadAttachmentObject.mockRejectedValue({ statusCode: 404, message: "Object not found" });
+    const response = await GET(new Request("http://localhost"), context());
+    expect(response!.status).toBe(404);
+    await expect(response!.json()).resolves.toEqual(expect.objectContaining({ error: expect.objectContaining({ message: "Image not found." }) }));
   });
 });

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/require-session";
 import { findOwnedGeneratedAttachment } from "@/lib/db/chat-repo";
 import { fail } from "@/lib/http/responses";
-import { downloadAttachmentObject } from "@/lib/storage/attachments";
+import { downloadAttachmentObject, isStorageObjectMissing } from "@/lib/storage/attachments";
 
 function extensionForMimeType(mimeType: string) {
   const extensions: Record<string, string> = {
@@ -36,6 +36,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ attachment
       },
     });
   } catch (error) {
+    if (isStorageObjectMissing(error)) {
+      console.info("[Storage] generated attachment object missing", { attachmentId });
+      return fail("Image not found.", 404);
+    }
     console.error("Unable to download generated image.", error);
     return fail("The image could not be downloaded. Please try again.", 500);
   }

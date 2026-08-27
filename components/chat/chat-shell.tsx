@@ -64,6 +64,7 @@ import { NoFolderDropZone } from "@/components/chat/no-folder-drop-zone";
 import { deriveHistoryTree } from "@/components/chat/history-tree";
 import { MessageCard } from "@/components/chat/message-card";
 import { createClientTemporaryId } from "@/lib/client/temporary-id";
+import { readResponseJson } from "@/lib/http/client-response";
 
 type Folder = {
   id: string;
@@ -82,7 +83,7 @@ type Message = {
   role: "system" | "user" | "assistant" | "tool";
   content_text: string;
   answer_mode?: AnswerMode | null;
-  attachments?: { id?: string; signedUrl: string; mimeType: string; storagePath: string }[];
+  attachments?: { id?: string; signedUrl: string | null; mimeType: string; storagePath: string; availability?: "available" | "unavailable" }[];
   generation_type?: "text" | "image";
   image_alt?: string;
 };
@@ -278,14 +279,14 @@ export function ChatShell({ chatId }: ChatShellProps) {
       fetch(`/api/chats/${targetChatId}`),
       fetch(`/api/chats/${targetChatId}/messages`),
     ]);
-    const chatJson = await chatRes.json();
-    const messageJson = await messageRes.json();
+    const chatJson = await readResponseJson<{ data?: { rating?: 1 | -1 | null; folder_id?: string | null }; error?: { message?: string } }>(chatRes);
+    const messageJson = await readResponseJson<{ data?: Message[]; error?: { message?: string } }>(messageRes);
     if (!chatRes.ok || !messageRes.ok) {
-      throw new Error(messageJson?.error?.message ?? "Failed to load messages.");
+      throw new Error(messageJson?.error?.message ?? "Could not load the chat.");
     }
-    setMessages(messageJson.data);
-    setRating(chatJson.data.rating ?? null);
-    setActiveChatFolderId(chatJson.data.folder_id ?? null);
+    setMessages(messageJson?.data ?? []);
+    setRating(chatJson?.data?.rating ?? null);
+    setActiveChatFolderId(chatJson?.data?.folder_id ?? null);
   }
 
   useEffect(() => {

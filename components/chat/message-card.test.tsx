@@ -105,6 +105,48 @@ describe("MessageCard", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it("renders an unavailable generated image without viewer, reuse, or download actions", async () => {
+    const onReuse = vi.fn();
+    await act(async () => root.render(
+      <MantineProvider><MessageCard onReuseGeneratedImage={onReuse} message={{
+        role: "assistant", content_text: "", generation_type: "image",
+        attachments: [{ id: "missing", storagePath: "generated/missing.webp", mimeType: "image/webp",
+          signedUrl: null, availability: "unavailable" }],
+      }} /></MantineProvider>,
+    ));
+    expect(document.body.textContent).toContain("Image unavailable");
+    expect(document.body.textContent).toContain("The file may have been deleted or corrupted.");
+    expect(document.body.textContent).toContain("IMAGE");
+    expect(document.querySelector('button[aria-label="View generated image"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("Reuse");
+    expect(document.body.textContent).not.toContain("Download");
+  });
+
+  it("keeps user text and renders a compact placeholder for an unavailable upload", async () => {
+    await act(async () => root.render(
+      <MantineProvider><MessageCard message={{ role: "user", content_text: "What is this?",
+        attachments: [{ id: "missing-user", storagePath: "uploaded/missing.png", mimeType: "image/png",
+          signedUrl: null, availability: "unavailable" }] }} /></MantineProvider>,
+    ));
+    expect(document.body.textContent).toContain("What is this?");
+    expect(document.body.textContent).toContain("Image unavailable");
+    expect(document.querySelector('button[aria-label="View generated image"]')).toBeNull();
+  });
+
+  it("replaces a generated image with a stable placeholder after browser load failure", async () => {
+    const onReuse = vi.fn();
+    await act(async () => root.render(
+      <MantineProvider><MessageCard onReuseGeneratedImage={onReuse} message={{ role: "assistant", content_text: "",
+        generation_type: "image", attachments: [{ id: "corrupt", storagePath: "generated/corrupt.webp",
+          mimeType: "image/webp", signedUrl: "signed-corrupt" }] }} /></MantineProvider>,
+    ));
+    const image = document.querySelector('button[aria-label="View generated image"] img') as HTMLImageElement;
+    await act(async () => image.dispatchEvent(new Event("error")));
+    expect(document.body.textContent).toContain("Image unavailable");
+    expect(document.querySelector('button[aria-label="View generated image"]')).toBeNull();
+    expect(document.querySelector('img[src="signed-corrupt"]')).toBeNull();
+  });
+
   it("replaces loading with a non-cancellation failure state", async () => {
     await act(async () => root.render(
       <MantineProvider><MessageCard pendingStatus="error"

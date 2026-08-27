@@ -63,6 +63,15 @@ describe("POST /api/chats/[chatId]/images reuse", () => {
     expect(mocks.generateAndStoreImage).not.toHaveBeenCalled();
   });
 
+  it("fails before BFL submission when the selected reference object is missing", async () => {
+    mocks.loadStoredImageReference.mockRejectedValue({ statusCode: 404, message: "Object not found" });
+    const response = await POST(request(), { params: Promise.resolve({ chatId }) });
+    expect(response!.status).toBe(422);
+    expect(await response!.json()).toEqual(expect.objectContaining({ error: expect.objectContaining({ code: "IMAGE_REFERENCE_UNAVAILABLE" }) }));
+    expect(mocks.generateAndStoreImage).not.toHaveBeenCalled();
+    expect(mocks.persistUploadedImages).not.toHaveBeenCalled();
+  });
+
   it("does not add prior image context when no reference was explicit", async () => {
     mocks.findSameChatGeneratedAttachments.mockResolvedValue([]);
     await POST(request(false), { params: Promise.resolve({ chatId }) });

@@ -22,9 +22,15 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
   if (hitRateLimit(`image:${auth.session.profileId}`, 10)) return fail("The image service is busy. Please try again shortly.", 429);
   const existingReferences = await findSameChatGeneratedAttachments(auth.session.profileId, chatId, parsed.referenceAttachmentIds);
   if (!existingReferences) return fail("Image reference not found.", 404);
+  let storedReferenceImages: Awaited<ReturnType<typeof loadStoredImageReference>>[];
+  try {
+    storedReferenceImages = await Promise.all(existingReferences.map((item) => loadStoredImageReference(item.storagePath, item.mimeType)));
+  } catch {
+    console.info(`[image-generation] imageRequestId=${imageRequestId} stage=reference-load failed`);
+    return fail("An image reference is unavailable. Remove it and try again.", 422, undefined, "IMAGE_REFERENCE_UNAVAILABLE");
+  }
   const dimensions = IMAGE_ASPECT_RATIOS[parsed.aspectRatio]; let attachment; let uploaded: Awaited<ReturnType<typeof persistUploadedImages>> = []; let persisted = false;
   try {
-    const storedReferenceImages = await Promise.all(existingReferences.map((item) => loadStoredImageReference(item.storagePath, item.mimeType)));
     uploaded = await persistUploadedImages({ profileId: auth.session.profileId, chatId, images: parsed.files });
     attachment = await generateAndStoreImage({ prompt: parsed.content, sourceImages: [...parsed.files, ...storedReferenceImages], profileId: auth.session.profileId, chatId, imageRequestId, ...dimensions });
     const sourceAttachments = [...uploaded, ...existingReferences.map((item) => ({ storagePath: item.storagePath,

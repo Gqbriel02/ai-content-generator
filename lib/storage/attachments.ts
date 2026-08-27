@@ -8,6 +8,13 @@ export class GeneratedImageStorageError extends Error {
   constructor(message: string, public readonly code: "BFL_DOWNLOAD_ERROR" | "IMAGE_VALIDATION_ERROR" | "IMAGE_STORAGE_ERROR") { super(message); }
 }
 
+export function isStorageObjectMissing(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { status?: number; statusCode?: number | string; message?: string };
+  const status = Number(value.statusCode ?? value.status);
+  return status === 404 || value.message?.toLowerCase().includes("object not found") === true;
+}
+
 export async function createSignedReadUrl(storagePath: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.storage

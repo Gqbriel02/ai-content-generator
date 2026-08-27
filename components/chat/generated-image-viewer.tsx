@@ -12,6 +12,7 @@ type Props = {
   alt: string;
   inlineStyle: React.CSSProperties;
   onReuse?: () => void;
+  onUnavailable?: () => void;
 };
 
 function downloadFilename(response: Response) {
@@ -19,7 +20,7 @@ function downloadFilename(response: Response) {
   return disposition.match(/filename="([^"\\/]+)"/i)?.[1] ?? "generated-image.webp";
 }
 
-export function GeneratedImageViewer({ attachmentId, signedUrl, alt, inlineStyle, onReuse }: Props) {
+export function GeneratedImageViewer({ attachmentId, signedUrl, alt, inlineStyle, onReuse, onUnavailable }: Props) {
   const [opened, setOpened] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -52,7 +53,7 @@ export function GeneratedImageViewer({ attachmentId, signedUrl, alt, inlineStyle
         onClick={() => setOpened(true)}
         style={{ display: "flex", cursor: "zoom-in", maxWidth: "100%", borderRadius: 8 }}
       >
-        <img src={signedUrl} alt={alt} style={inlineStyle} />
+        <img src={signedUrl} alt={alt} style={inlineStyle} onError={onUnavailable} />
       </UnstyledButton>
       <Modal.Root opened={opened} onClose={() => setOpened(false)} size="90vw" centered transitionProps={{ duration: 0 }}>
         <Modal.Overlay backgroundOpacity={0.72} blur={2} />
@@ -74,6 +75,7 @@ export function GeneratedImageViewer({ attachmentId, signedUrl, alt, inlineStyle
               <img
                 src={signedUrl}
                 alt={alt}
+                onError={() => { setOpened(false); onUnavailable?.(); }}
                 style={{ width: "auto", height: "auto", maxWidth: "90vw", maxHeight: "70vh", objectFit: "contain", borderRadius: 8 }}
               />
             </Group>
