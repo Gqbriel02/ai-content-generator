@@ -41,6 +41,7 @@ import {
   IconPhoto,
   IconSend,
   IconSearch,
+  IconSquare,
   IconThumbDown,
   IconThumbUp,
   IconX,
@@ -111,7 +112,7 @@ type PendingExchange = {
   answerMode: AnswerMode;
   generationType: "text" | "image";
   attachments: DraftAttachment[];
-  status: "loading" | "error";
+  status: "loading" | "error" | "canceled";
   errorMessage?: string;
 };
 
@@ -157,6 +158,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
   const moveRequestsPending = useRef(new Set<string>());
   const requestSequence = useRef(0);
   const sendRequestPending = useRef(false);
+  const activeTextRequest = useRef<{ requestId: number; controller: AbortController } | null>(null);
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const previewUrlsRef = useRef(new Set<string>());
   const dndSensors = useSensors(
@@ -175,6 +177,8 @@ export function ChatShell({ chatId }: ChatShellProps) {
   }, [messages, visiblePendingExchange?.status, visiblePendingExchange?.requestId]);
 
   useEffect(() => () => {
+    activeTextRequest.current?.controller.abort();
+    activeTextRequest.current = null;
     previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrlsRef.current.clear();
   }, []);
@@ -489,6 +493,8 @@ export function ChatShell({ chatId }: ChatShellProps) {
     const ownerKey = conversationOwnerKey;
     const requestId = ++requestSequence.current;
     const isInitial = !activeChatId;
+    const textController = submittedGenerationType === "text" ? new AbortController() : null;
+    if (textController) activeTextRequest.current = { requestId, controller: textController };
     setPendingExchange({
       requestId, ownerKey, content: submittedContent, answerMode: submittedAnswerMode, generationType: submittedGenerationType,
       attachments: submittedAttachments, status: "loading",
@@ -511,6 +517,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
         method: "POST",
         body: isImageRequest ? buildImageRequestForm(submittedContent, aspectRatio,
           isInitial ? draftFolderId : null, submittedAttachments) : textForm,
+        ...(textController ? { signal: textController.signal } : {}),
       });
       const json = await response.json();
       responseErrorCode = typeof json?.error?.code === "string" ? json.error.code : "";
@@ -535,6 +542,7 @@ export function ChatShell({ chatId }: ChatShellProps) {
       }
       submittedAttachments.forEach((item) => revokePreview(item.signedUrl));
     } catch (error) {
+      const wasCanceled = submittedGenerationType === "text" && textController?.signal.aborted === true;
       if (activeOwnerRef.current === ownerKey) {
         const code = responseErrorCode;
         const safeImageMessage = code === "BFL_SUBMISSION_UNCERTAIN" || code === "BFL_POLLING_ERROR" || code === "BFL_TIMEOUT"
@@ -545,19 +553,30 @@ export function ChatShell({ chatId }: ChatShellProps) {
               ? responseErrorMessage || "The image service is temporarily unavailable."
               : submittedGenerationType === "image" ? "Image generation failed." : undefined;
         setPendingExchange((current) => current?.requestId === requestId
-          ? { ...current, status: "error", errorMessage: safeImageMessage }
+          ? wasCanceled
+            ? { ...current, status: "canceled", errorMessage: undefined }
+            : { ...current, status: "error", errorMessage: safeImageMessage }
           : current);
         setPendingAttachments(submittedAttachments);
       }
-      notifications.show({
-        color: "red",
-        title: "Error",
-        message: error instanceof Error ? error.message : "An error occurred.",
-      });
+      if (!wasCanceled) {
+        notifications.show({
+          color: "red",
+          title: "Error",
+          message: error instanceof Error ? error.message : "An error occurred.",
+        });
+      }
     } finally {
+      if (activeTextRequest.current?.requestId === requestId) activeTextRequest.current = null;
       sendRequestPending.current = false;
       setSending(false);
     }
+  }
+
+  function cancelTextGeneration() {
+    const active = activeTextRequest.current;
+    if (!active || pendingExchange?.requestId !== active.requestId || pendingExchange.generationType !== "text") return;
+    active.controller.abort();
   }
 
   function removePendingAttachment(storagePath: string) {
@@ -902,9 +921,17 @@ export function ChatShell({ chatId }: ChatShellProps) {
                     </ActionIcon>
                   )}
                 </FileButton>
-                <ActionIcon size="lg" onClick={sendMessage} loading={sending} disabled={!content.trim()} aria-label="send">
-                  <IconSend size={18} />
-                </ActionIcon>
+                {sending && visiblePendingExchange?.generationType === "text" ? (
+                  <ActionIcon size="lg" color="red" variant="light" onClick={cancelTextGeneration}
+                    aria-label="Cancel generation" title="Cancel generation">
+                    <IconSquare size={16} fill="currentColor" />
+                  </ActionIcon>
+                ) : (
+                  <ActionIcon size="lg" onClick={sendMessage} loading={sending}
+                    disabled={!content.trim()} aria-label="send">
+                    <IconSend size={18} />
+                  </ActionIcon>
+                )}
               </Group>
             </Stack>
           </Stack>

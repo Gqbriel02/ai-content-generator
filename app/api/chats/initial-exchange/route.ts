@@ -6,7 +6,7 @@ import { createSignedReadUrl, deleteAttachmentObjects } from "@/lib/storage/atta
 import { parseTextExchangeRequest } from "@/lib/http/text-exchange-request";
 import { persistUploadedImages } from "@/lib/storage/uploaded-images";
 import { createLmStudioImageDataUrl, LmStudioImagePreparationError } from "@/lib/ai/lmstudio-image";
-import { generateAssistantReply, generateChatTitle, LmStudioError } from "@/lib/ai/lmstudio";
+import { generateAssistantReply, generateChatTitle, isLmStudioRequestCanceled, LmStudioError } from "@/lib/ai/lmstudio";
 import { resolveInitialChatTitle } from "@/lib/ai/chat-title";
 
 export async function POST(request: Request) {
@@ -19,11 +19,12 @@ export async function POST(request: Request) {
 
   try {
     const attachments = await Promise.all(parsed.files.map(createLmStudioImageDataUrl));
-    const assistantText = await generateAssistantReply([{ role: "user", contentText: parsed.content, attachments }], parsed.answerMode);
+    const assistantText = await generateAssistantReply([{ role: "user", contentText: parsed.content, attachments }], parsed.answerMode, request.signal);
     let generatedTitle: string | null = null;
     try {
-      generatedTitle = await generateChatTitle({ userMessage: parsed.content, assistantMessage: assistantText });
+      generatedTitle = await generateChatTitle({ userMessage: parsed.content, assistantMessage: assistantText }, request.signal);
     } catch (error) {
+      if (isLmStudioRequestCanceled(error, request.signal)) throw error;
       console.error("Unable to generate an initial chat title; using fallback.", error);
     }
     const title = resolveInitialChatTitle({ generatedTitle, userMessage: parsed.content });
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
       return ok({ ...result, userMessage: { ...result.userMessage, attachments: [] }, warning: { code: "ATTACHMENT_SIGNED_URL_ERROR" } }, { status: 201 });
     }
   } catch (error) {
+    if (isLmStudioRequestCanceled(error, request.signal)) return new Response(null, { status: 499 });
     if (error instanceof LmStudioImagePreparationError) return fail(error.message, 422);
     if (error instanceof LmStudioError) return fail(error.message, error.status);
     console.error("Unable to create initial chat exchange.", error);

@@ -11,7 +11,7 @@ import { createSignedReadUrl, deleteAttachmentObjects } from "@/lib/storage/atta
 import { parseTextExchangeRequest } from "@/lib/http/text-exchange-request";
 import { persistUploadedImages } from "@/lib/storage/uploaded-images";
 import { createLmStudioImageDataUrl, LmStudioImagePreparationError } from "@/lib/ai/lmstudio-image";
-import { generateAssistantReply, LmStudioError } from "@/lib/ai/lmstudio";
+import { generateAssistantReply, isLmStudioRequestCanceled, LmStudioError } from "@/lib/ai/lmstudio";
 import { z } from "zod";
 
 type MappedMessage = {
@@ -107,8 +107,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/chats/[chat
       contentText: parsed.content,
       attachments: await Promise.all(parsed.files.map(createLmStudioImageDataUrl)),
     });
-    assistantText = await generateAssistantReply(messagesForModel, parsed.answerMode);
+    assistantText = await generateAssistantReply(messagesForModel, parsed.answerMode, request.signal);
   } catch (error) {
+    if (isLmStudioRequestCanceled(error, request.signal)) return new Response(null, { status: 499 });
     if (error instanceof LmStudioImagePreparationError) return fail(error.message, 422);
     if (error instanceof LmStudioError) {
       return fail(error.message, error.status);

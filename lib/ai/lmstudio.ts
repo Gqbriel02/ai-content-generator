@@ -120,7 +120,12 @@ function mapLmStudioError(error: unknown) {
   return new LmStudioError(fallback, 503);
 }
 
-export async function generateAssistantReply(messages: LmMessage[], answerMode: AnswerMode) {
+export function isLmStudioRequestCanceled(error: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) return true;
+  return error instanceof Error && (error.name === "AbortError" || error.name === "APIUserAbortError");
+}
+
+export async function generateAssistantReply(messages: LmMessage[], answerMode: AnswerMode, signal?: AbortSignal) {
   try {
     const maxTokens = RESPONSE_BUDGETS[answerMode].maxTokens;
     console.info("AI generation started.", { mode: answerMode, maxTokens, timeoutMs: AI_RESPONSE_TIMEOUT_MS });
@@ -132,7 +137,7 @@ export async function generateAssistantReply(messages: LmMessage[], answerMode: 
         ],
         temperature: 0.35,
         max_tokens: maxTokens,
-      }, { timeout: AI_RESPONSE_TIMEOUT_MS, maxRetries: 0 });
+      }, { timeout: AI_RESPONSE_TIMEOUT_MS, maxRetries: 0, signal });
 
     const choice = completion.choices[0];
     console.info("AI generation completed.", { finishReason: choice?.finish_reason ?? "unknown" });
@@ -146,11 +151,15 @@ export async function generateAssistantReply(messages: LmMessage[], answerMode: 
 
     return content;
   } catch (error) {
+    if (isLmStudioRequestCanceled(error, signal)) {
+      console.info("[LM Studio] request canceled");
+      throw error;
+    }
     throw mapLmStudioError(error);
   }
 }
 
-export async function generateChatTitle(input: { userMessage: string; assistantMessage: string }) {
+export async function generateChatTitle(input: { userMessage: string; assistantMessage: string }, signal?: AbortSignal) {
   try {
     const assistantExcerpt = input.assistantMessage.slice(0, 6000);
     const completion = await primaryClient.chat.completions.create({
@@ -161,10 +170,14 @@ export async function generateChatTitle(input: { userMessage: string; assistantM
       ],
       temperature: 0.15,
       max_tokens: TITLE_MAX_TOKENS,
-    }, { timeout: TITLE_GENERATION_TIMEOUT_MS, maxRetries: 0 });
+    }, { timeout: TITLE_GENERATION_TIMEOUT_MS, maxRetries: 0, signal });
     console.info("AI title generation completed.", { finishReason: completion.choices[0]?.finish_reason ?? "unknown" });
     return normalizeAssistantText(completion.choices[0]?.message?.content);
   } catch (error) {
+    if (isLmStudioRequestCanceled(error, signal)) {
+      console.info("[LM Studio] title request canceled");
+      throw error;
+    }
     throw mapLmStudioError(error);
   }
 }

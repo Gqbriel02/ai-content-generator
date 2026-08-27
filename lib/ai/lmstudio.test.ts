@@ -32,7 +32,7 @@ describe("LM Studio request reliability", () => {
     mocks.create.mockResolvedValue({ choices: [{ message: { content: "Answer" }, finish_reason: "stop" }] });
     await expect(generateAssistantReply([{ role: "user", contentText: "Question" }], mode)).resolves.toBe("Answer");
     expect(mocks.create).toHaveBeenCalledOnce();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ max_tokens: maxTokens }), { timeout: 600_000, maxRetries: 0 });
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ max_tokens: maxTokens }), { timeout: 600_000, maxRetries: 0, signal: undefined });
   });
 
   it.each(["stop", "length"])("accepts non-empty content with finish_reason %s without retry", async (finishReason) => {
@@ -47,10 +47,23 @@ describe("LM Studio request reliability", () => {
     expect(mocks.create).toHaveBeenCalledOnce();
   });
 
+  it("passes the AbortSignal through the SDK request options without retrying", async () => {
+    const controller = new AbortController();
+    const aborted = new DOMException("This operation was aborted", "AbortError");
+    mocks.create.mockImplementation(async (_body, options) => {
+      expect(options).toEqual({ timeout: 600_000, maxRetries: 0, signal: controller.signal });
+      controller.abort();
+      throw aborted;
+    });
+    await expect(generateAssistantReply([{ role: "user", contentText: "Question" }], "standard", controller.signal))
+      .rejects.toBe(aborted);
+    expect(mocks.create).toHaveBeenCalledOnce();
+  });
+
   it("uses one small independently timed title request", async () => {
     mocks.create.mockResolvedValue({ choices: [{ message: { content: "Useful Title" }, finish_reason: "stop" }] });
     await expect(generateChatTitle({ userMessage: "Question", assistantMessage: "Answer" })).resolves.toBe("Useful Title");
     expect(mocks.create).toHaveBeenCalledOnce();
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ max_tokens: 128, temperature: 0.15 }), { timeout: 60_000, maxRetries: 0 });
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ max_tokens: 128, temperature: 0.15 }), { timeout: 60_000, maxRetries: 0, signal: undefined });
   });
 });

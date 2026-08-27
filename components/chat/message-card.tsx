@@ -19,7 +19,7 @@ export type DisplayMessage = {
 
 type Props = {
   message: DisplayMessage;
-  pendingStatus?: "loading" | "error";
+  pendingStatus?: "loading" | "error" | "canceled";
   pendingErrorMessage?: string;
   onReuseGeneratedImage?: (attachment: { attachmentId: string; previewUrl: string; mimeType: string }) => void;
 };
@@ -61,6 +61,8 @@ export function MessageCard({ message, pendingStatus, pendingErrorMessage, onReu
         </Group>
       ) : pendingStatus === "error" ? (
         <Text c="red">{pendingErrorMessage ?? (isImageGeneration ? "Image generation failed." : "Generation failed. Please try again.")}</Text>
+      ) : pendingStatus === "canceled" ? (
+        <Text c="dimmed">The request was canceled.</Text>
       ) : (
         <MarkdownView value={message.content_text || ""} />
       )}
