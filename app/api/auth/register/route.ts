@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { createAuthSession, createProfile, findProfileByEmail } from "@/lib/db/auth-repo";
 import { SESSION_TTL_SECONDS } from "@/lib/auth/constants";
 import { setAuthCookie } from "@/lib/auth/session";
+import { chooseInitialAvatarColor } from "@/lib/profile/identity";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -32,7 +33,12 @@ export async function POST(request: Request) {
   }
 
   const passwordHash = await hashPassword(password);
-  const profile = await createProfile({ email, passwordHash, displayName });
+  const profile = await createProfile({
+    email,
+    passwordHash,
+    displayName,
+    avatarColor: chooseInitialAvatarColor(),
+  });
 
   const tokenJti = randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();

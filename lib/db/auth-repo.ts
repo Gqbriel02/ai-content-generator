@@ -16,6 +16,7 @@ export async function createProfile(input: {
   email: string;
   passwordHash: string;
   displayName: string;
+  avatarColor: string;
 }) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -24,8 +25,10 @@ export async function createProfile(input: {
       email: input.email.toLowerCase(),
       password_hash: input.passwordHash,
       display_name: input.displayName,
+      avatar_path: null,
+      avatar_color: input.avatarColor,
     })
-    .select("id, email, display_name")
+    .select("id, email, display_name, avatar_path, avatar_color, created_at, updated_at")
     .single();
 
   if (error) throw error;

@@ -13,6 +13,7 @@ import {
   FileButton,
   Group,
   Loader,
+  Menu,
   Modal,
   ScrollArea,
   Select,
@@ -22,6 +23,7 @@ import {
   TextInput,
   Textarea,
   Title,
+  UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
@@ -39,6 +41,7 @@ import {
   IconLogout,
   IconMessagePlus,
   IconPhoto,
+  IconUser,
   IconSend,
   IconSearch,
   IconSquare,
@@ -65,6 +68,8 @@ import { deriveHistoryTree } from "@/components/chat/history-tree";
 import { MessageCard } from "@/components/chat/message-card";
 import { createClientTemporaryId } from "@/lib/client/temporary-id";
 import { readResponseJson } from "@/lib/http/client-response";
+import { ProfileAvatar } from "@/components/profile/profile-avatar";
+import type { SafeProfile } from "@/lib/profile/identity";
 
 type Folder = {
   id: string;
@@ -90,6 +95,7 @@ type Message = {
 
 type ChatShellProps = {
   chatId?: string;
+  profile?: SafeProfile;
 };
 
 type DraftAttachment =
@@ -117,7 +123,7 @@ type PendingExchange = {
   errorMessage?: string;
 };
 
-export function ChatShell({ chatId }: ChatShellProps) {
+export function ChatShell({ chatId, profile }: ChatShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useParams<{ chatId?: string }>();
@@ -655,9 +661,18 @@ export function ChatShell({ chatId }: ChatShellProps) {
             <Button leftSection={<IconMessagePlus size={16} />} onClick={() => createDraft(null)}>
               New Chat
             </Button>
-            <ActionIcon variant="subtle" onClick={logout} aria-label="Sign out">
-              <IconLogout size={18} />
-            </ActionIcon>
+            <Menu position="bottom-end" shadow="md" width={180}>
+              <Menu.Target>
+                <UnstyledButton type="button" aria-label="Open profile menu" style={{ cursor: "pointer", borderRadius: "50%" }}>
+                  <ProfileAvatar displayName={profile?.displayName} email={profile?.email}
+                    avatarColor={profile?.avatarColor ?? "#228BE6"} size={36} />
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item leftSection={<IconUser size={16} />} onClick={() => router.push("/profile")}>Profile</Menu.Item>
+                <Menu.Item leftSection={<IconLogout size={16} />} onClick={logout}>Logout</Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           </Group>
         </Group>
       </AppShell.Header>
