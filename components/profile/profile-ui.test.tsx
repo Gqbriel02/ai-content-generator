@@ -73,6 +73,23 @@ describe("profile UI", () => {
     expect(router.refresh).toHaveBeenCalled();
   });
 
+  it("renders the compact account-first hierarchy with a sticky full-page background", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profile} /></MantineProvider>); });
+    const account = document.querySelector('[data-testid="account-information-card"]') as HTMLElement;
+    const appearance = document.querySelector('[data-testid="profile-appearance-card"]') as HTMLElement;
+    expect(account.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelectorAll(".mantine-Avatar-root")).toHaveLength(1);
+    expect(Array.from(document.querySelectorAll("h1,h2,h3")).filter((heading) => heading.textContent === "Profile")).toHaveLength(1);
+    expect(document.body.textContent).not.toContain("Manage your profile photo and the fallback color used behind your initials.");
+    expect(Array.from(document.querySelectorAll("h1,h2,h3,h4")).some((heading) => heading.textContent === "Profile photo")).toBe(false);
+    expect(document.body.textContent).toContain("JPEG, PNG, or WebP. Maximum 5 MB.");
+    const stickyHeader = document.querySelector('[data-testid="profile-sticky-header"]') as HTMLElement;
+    expect(stickyHeader.style.position).toBe("sticky"); expect(stickyHeader.style.top).toBe("0rem");
+    const page = document.querySelector('[data-testid="profile-page-background"]') as HTMLElement;
+    expect(page.style.backgroundColor).toBe("rgb(248, 251, 255)"); expect(page.style.minHeight).toBe("100dvh");
+  });
+
   it("falls back to initials when the browser cannot load a signed avatar image", async () => {
     await act(async () => { root.render(<MantineProvider><ProfileAvatar displayName="Gabriel Ionita" email="gabriel@example.com"
       avatarColor="#7950F2" avatarUrl="https://private.example/signed" /></MantineProvider>); });

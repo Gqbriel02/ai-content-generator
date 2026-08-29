@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, ColorInput, Divider, FileButton, Group, Stack, Text, Title } from "@mantine/core";
+import { Box, Button, Card, ColorInput, Divider, FileButton, Group, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconArrowLeft, IconPhoto, IconTrash, IconX } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
@@ -98,30 +98,43 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
   const memberSince = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date(profile.createdAt));
   const displayedAvatarUrl = localPreviewUrl ?? avatarUrl;
 
-  return <Stack gap="xl" maw={760} mx="auto" p={{ base: "md", sm: "xl" }}>
-    <Button variant="subtle" color="dark" leftSection={<IconArrowLeft size={18} />} onClick={() => router.push("/chat")} w="fit-content">Back to chats</Button>
-    <Stack align="center" gap="xs">
-      <Title order={1}>Profile</Title>
-      <ProfileAvatar displayName={profile.displayName} email={profile.email} avatarColor={persistedColor} avatarUrl={displayedAvatarUrl} size={88} />
-      <Title order={2}>{profile.displayName}</Title><Text c="dimmed">{profile.email}</Text>
+  const valueStyle = { minWidth: 0, overflowWrap: "anywhere" as const };
+
+  return <Box bg="#f8fbff" mih="100dvh" data-testid="profile-page-background">
+    <Box
+      pos="sticky"
+      top={0}
+      style={{ zIndex: 10, borderBottom: "1px solid var(--mantine-color-gray-3)", backgroundColor: "#f8fbff" }}
+      data-testid="profile-sticky-header"
+    >
+      <Group maw={760} mx="auto" px={{ base: "md", sm: "xl" }} py="sm" justify="space-between" wrap="wrap">
+        <Button variant="subtle" color="dark" leftSection={<IconArrowLeft size={18} />} onClick={() => router.push("/chat")}>
+          Back to chats
+        </Button>
+        <Title order={2}>Profile</Title>
+      </Group>
+    </Box>
+    <Stack gap="lg" maw={760} mx="auto" px={{ base: "md", sm: "xl" }} py="xl">
+      <Card withBorder radius="lg" p={{ base: "md", sm: "xl" }} data-testid="account-information-card">
+        <Title order={3}>Account information</Title><Divider my="md" /><Stack gap="md">
+          <Group justify="space-between" align="flex-start" wrap="nowrap"><Text c="dimmed" style={{ flexShrink: 0 }}>Display name</Text><Text ta="right" style={valueStyle}>{profile.displayName}</Text></Group>
+          <Group justify="space-between" align="flex-start" wrap="nowrap"><Text c="dimmed" style={{ flexShrink: 0 }}>Email</Text><Text ta="right" style={valueStyle}>{profile.email}</Text></Group>
+          <Group justify="space-between" align="flex-start" wrap="nowrap"><Text c="dimmed" style={{ flexShrink: 0 }}>Member since</Text><Text ta="right" style={valueStyle}>{memberSince}</Text></Group>
+        </Stack>
+      </Card>
+      <Card withBorder radius="lg" p={{ base: "md", sm: "xl" }} data-testid="profile-appearance-card"><Stack gap="lg">
+        <Title order={3}>Profile appearance</Title>
+        <Stack gap="sm"><Group align="center" wrap="wrap">
+          <ProfileAvatar displayName={profile.displayName} email={profile.email} avatarColor={lastValidColor} avatarUrl={displayedAvatarUrl} size={88} />
+          <Group gap="xs" wrap="wrap">
+            <FileButton onChange={selectPhoto} accept="image/jpeg,image/png,image/webp">{(props) => <Button {...props} variant="light" leftSection={<IconPhoto size={17} />} disabled={savingPhoto || removingPhoto}>{avatarUrl || selectedFile ? "Change photo" : "Upload photo"}</Button>}</FileButton>
+            {selectedFile ? <><Button onClick={savePhoto} loading={savingPhoto} disabled={removingPhoto}>Save photo</Button><Button variant="default" leftSection={<IconX size={16} />} onClick={clearLocalPreview} disabled={savingPhoto}>Cancel</Button></> : avatarUrl ? <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={removePhoto} loading={removingPhoto}>Remove photo</Button> : null}
+          </Group>
+        </Group><Text size="xs" c="dimmed">JPEG, PNG, or WebP. Maximum 5 MB.</Text></Stack>
+        <Divider />
+        <ColorInput label="Avatar fallback color" description="Used whenever your profile photo is removed or unavailable. Six-digit HEX value." value={draftColor} onChange={handleColorChange} error={error} format="hex" withEyeDropper={false} swatches={[]} />
+        <Group justify="flex-end"><Button onClick={save} disabled={!canSave} loading={saving}>Save changes</Button></Group>
+      </Stack></Card>
     </Stack>
-    <Card withBorder radius="lg" p={{ base: "md", sm: "xl" }}><Stack gap="lg">
-      <div><Title order={3}>Profile appearance</Title><Text c="dimmed" size="sm">Manage your profile photo and the fallback color used behind your initials.</Text></div>
-      <Stack gap="sm"><Text fw={500}>Profile photo</Text><Group align="center" wrap="wrap">
-        <ProfileAvatar displayName={profile.displayName} email={profile.email} avatarColor={lastValidColor} avatarUrl={displayedAvatarUrl} size={72} />
-        <Group gap="xs" wrap="wrap">
-          <FileButton onChange={selectPhoto} accept="image/jpeg,image/png,image/webp">{(props) => <Button {...props} variant="light" leftSection={<IconPhoto size={17} />} disabled={savingPhoto || removingPhoto}>{avatarUrl || selectedFile ? "Change photo" : "Upload photo"}</Button>}</FileButton>
-          {selectedFile ? <><Button onClick={savePhoto} loading={savingPhoto} disabled={removingPhoto}>Save photo</Button><Button variant="default" leftSection={<IconX size={16} />} onClick={clearLocalPreview} disabled={savingPhoto}>Cancel</Button></> : avatarUrl ? <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={removePhoto} loading={removingPhoto}>Remove photo</Button> : null}
-        </Group>
-      </Group><Text size="xs" c="dimmed">JPEG, PNG, or WebP. Maximum 5 MB.</Text></Stack>
-      <Divider />
-      <ColorInput label="Avatar fallback color" description="Used whenever your profile photo is removed or unavailable. Six-digit HEX value." value={draftColor} onChange={handleColorChange} error={error} format="hex" withEyeDropper={false} swatches={[]} />
-      <Group justify="flex-end"><Button onClick={save} disabled={!canSave} loading={saving}>Save changes</Button></Group>
-    </Stack></Card>
-    <Card withBorder radius="lg" p={{ base: "md", sm: "xl" }}><Title order={3}>Account information</Title><Divider my="md" /><Stack gap="md">
-      <Group justify="space-between" align="flex-start"><Text c="dimmed">Display name</Text><Text ta="right">{profile.displayName}</Text></Group>
-      <Group justify="space-between" align="flex-start"><Text c="dimmed">Email</Text><Text ta="right">{profile.email}</Text></Group>
-      <Group justify="space-between" align="flex-start"><Text c="dimmed">Member since</Text><Text ta="right">{memberSince}</Text></Group>
-    </Stack></Card>
-  </Stack>;
+  </Box>;
 }
