@@ -104,4 +104,18 @@ describe("ChatShell text cancellation", () => {
     expect(document.querySelector('button[aria-label="Cancel generation"]')).toBeNull();
     expect(imageInit).not.toHaveProperty("signal");
   });
+
+  it("renders both closed delete modals without a duplicate-key warning", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/folders" || url === "/api/chats") return Promise.resolve(Response.json({ data: [] }));
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as typeof fetch;
+    await renderShell(fetchMock);
+    const duplicateKeyWarnings = consoleError.mock.calls.filter((call) =>
+      call.some((value) => String(value).includes("Encountered two children with the same key")),
+    );
+    expect(duplicateKeyWarnings).toEqual([]);
+  });
 });

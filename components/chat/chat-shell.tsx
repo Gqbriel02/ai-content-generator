@@ -14,7 +14,6 @@ import {
   Group,
   Loader,
   Menu,
-  Modal,
   ScrollArea,
   Select,
   SegmentedControl,
@@ -61,6 +60,7 @@ import { CreateFolderModal } from "@/components/chat/create-folder-modal";
 import { HistoryFolderItem } from "@/components/chat/history-folder-item";
 import { RenameFolderModal } from "@/components/chat/rename-folder-modal";
 import { DeleteFolderModal } from "@/components/chat/delete-folder-modal";
+import { DeleteChatModal } from "@/components/chat/delete-chat-modal";
 import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { MoveChatModal } from "@/components/chat/move-chat-modal";
 import { NoFolderDropZone } from "@/components/chat/no-folder-drop-zone";
@@ -954,31 +954,8 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
         )}
       </AppShell.Main>
 
-      <Modal
-        opened={chatToDelete !== null}
-        onClose={() => {
-          if (!deletingChat) setChatToDelete(null);
-        }}
-        title="Delete chat?"
-        centered
-        closeOnClickOutside={!deletingChat}
-        closeOnEscape={!deletingChat}
-        withCloseButton={!deletingChat}
-      >
-        <Stack gap="lg">
-          <Text size="sm">
-            Are you sure you want to permanently delete this chat? This action cannot be undone.
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setChatToDelete(null)} disabled={deletingChat} autoFocus>
-              Cancel
-            </Button>
-            <Button color="red" onClick={deleteChat} loading={deletingChat} disabled={deletingChat}>
-              Delete
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+      <DeleteChatModal key={chatToDelete ? `chat-${chatToDelete.id}` : "chat-closed"} opened={chatToDelete !== null} deleting={deletingChat}
+        onClose={() => setChatToDelete(null)} onConfirm={() => void deleteChat()} />
       {createFolderOpened ? (
         <CreateFolderModal
           opened
@@ -988,7 +965,7 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
       ) : null}
       {folderToRename ? <RenameFolderModal folder={folderToRename} opened onClose={() => setFolderToRename(null)}
         onRenamed={(folder) => { setFolders((current) => current.map((item) => item.id === folder.id ? { ...item, ...folder } : item)); setFolderToRename(null); notifications.show({ color: "green", title: "Folder renamed", message: `Folder renamed to “${folder.name}”.` }); }} /> : null}
-      <DeleteFolderModal opened={folderToDelete !== null} deleting={deletingFolder}
+      <DeleteFolderModal key={folderToDelete ? `folder-${folderToDelete.id}` : "folder-closed"} opened={folderToDelete !== null} deleting={deletingFolder}
         onClose={() => setFolderToDelete(null)} onConfirm={() => void deleteFolder()} />
       {chatToRename ? <RenameChatModal chat={chatToRename} onClose={() => setChatToRename(null)}
         onRenamed={(renamed) => {
