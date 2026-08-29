@@ -239,7 +239,7 @@ describe("persistChatExchange", () => {
     rpc.mockReset();
   });
 
-  it.each(["detailed", "tutorial"] as const)(
+  it.each(["standard", "concise", "detailed", "creative", "code", "tutorial"] as const)(
     "persists and returns a complete %s exchange through one RPC call",
     async (assistantAnswerMode) => {
     const userMessage = { id: "user-id", role: "user", content_text: "Prompt" };
@@ -268,7 +268,6 @@ describe("persistChatExchange", () => {
       p_user_content: "Prompt",
       p_assistant_content: "Response",
       p_assistant_answer_mode: assistantAnswerMode,
-      p_assistant_payload: null,
       p_attachments: [],
     });
     },
@@ -324,7 +323,7 @@ describe("persistInitialChatExchange", () => {
       p_profile_id: "profile", p_folder_id: null, p_title: "Image", p_model_name: "flux-2-klein-4b",
       p_user_content: "Prompt", p_assistant_content: "", p_assistant_answer_mode: null,
       p_attachments: [{ storage_path: "profile/generated/id.webp", mime_type: "image/webp", width: 1024, height: 1024, size_bytes: 42 }],
-      p_attachment_target: "assistant", p_assistant_payload: null, p_user_attachments: [],
+      p_attachment_target: "assistant", p_user_attachments: [],
     });
   });
 });

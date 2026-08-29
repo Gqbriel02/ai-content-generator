@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AI Chat Studio",
-  description: "A local-first AI chat a workspace with folders and structured tasks.",
+  description: "A local-first AI chat workspace with folders and multimodal conversations.",
 };
 
 export default function RootLayout({

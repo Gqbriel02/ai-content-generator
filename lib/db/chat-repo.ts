@@ -272,7 +272,7 @@ export async function listMessages(chatId: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("messages")
-    .select("id, chat_id, role, content_text, structured_payload, answer_mode, created_at, message_attachments(*)")
+    .select("id, chat_id, role, content_text, answer_mode, created_at, message_attachments(*)")
     .eq("chat_id", chatId)
     .order("created_at", { ascending: true });
   if (error) throw error;
@@ -349,7 +349,6 @@ export async function createMessage(input: {
   chatId: string;
   role: "system" | "user" | "assistant" | "tool";
   contentText: string;
-  structuredPayload?: unknown;
 }) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -358,7 +357,6 @@ export async function createMessage(input: {
       chat_id: input.chatId,
       role: input.role,
       content_text: input.contentText,
-      structured_payload: input.structuredPayload ?? null,
     })
     .select("*")
     .single();
@@ -371,7 +369,6 @@ type PersistedMessage = {
   chat_id: string;
   role: "user" | "assistant";
   content_text: string;
-  structured_payload: unknown;
   answer_mode: AnswerMode | null;
   created_at: string;
 };
@@ -382,7 +379,6 @@ export async function persistChatExchange(input: {
   userContent: string;
   assistantContent: string;
   assistantAnswerMode: AnswerMode;
-  assistantPayload?: unknown;
   attachments?: AttachmentInput[];
 }) {
   const supabase = createServerSupabaseClient();
@@ -392,7 +388,6 @@ export async function persistChatExchange(input: {
     p_user_content: input.userContent,
     p_assistant_content: input.assistantContent,
     p_assistant_answer_mode: input.assistantAnswerMode,
-    p_assistant_payload: input.assistantPayload ?? null,
     p_attachments: (input.attachments ?? []).map((attachment) => ({
       storage_path: attachment.storagePath, mime_type: attachment.mimeType,
       width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
@@ -446,7 +441,6 @@ export async function persistInitialChatExchange(input: {
       storage_path: attachment.storagePath, mime_type: attachment.mimeType,
       width: attachment.width ?? null, height: attachment.height ?? null, size_bytes: attachment.sizeBytes ?? null,
     })),
-    p_assistant_payload: null,
   });
   if (error) throw error;
   const result = data as { chat?: Record<string, unknown>; userMessage?: PersistedMessage; assistantMessage?: PersistedMessage } | null;
