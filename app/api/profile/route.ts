@@ -2,12 +2,13 @@ import { requireSession } from "@/lib/auth/require-session";
 import { findSafeProfileById, updateProfileAvatarColor } from "@/lib/db/profile-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { updateAvatarColorSchema } from "@/lib/validation/profile";
+import { withProfileAvatarUrl } from "@/lib/profile/profile-view";
 
 export async function GET() {
   const auth = await requireSession();
   if ("error" in auth) return auth.error;
   const profile = await findSafeProfileById(auth.session.profileId);
-  return profile ? ok(profile) : fail("Profile not found.", 404);
+  return profile ? ok(await withProfileAvatarUrl(profile)) : fail("Profile not found.", 404);
 }
 
 export async function PATCH(request: Request) {
@@ -24,5 +25,5 @@ export async function PATCH(request: Request) {
   if (!parsed.success) return fail("Invalid profile update.", 400, parsed.error.flatten());
 
   const profile = await updateProfileAvatarColor(auth.session.profileId, parsed.data.avatarColor);
-  return profile ? ok(profile) : fail("Profile not found.", 404);
+  return profile ? ok(await withProfileAvatarUrl(profile)) : fail("Profile not found.", 404);
 }

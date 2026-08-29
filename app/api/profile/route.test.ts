@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ requireSession: vi.fn(), find: vi.fn(), update: vi.fn() }));
 vi.mock("@/lib/auth/require-session", () => ({ requireSession: mocks.requireSession }));
 vi.mock("@/lib/db/profile-repo", () => ({ findSafeProfileById: mocks.find, updateProfileAvatarColor: mocks.update }));
+vi.mock("@/lib/profile/profile-view", () => ({ withProfileAvatarUrl: vi.fn(async (profile) => ({ ...profile, avatarUrl: null })) }));
 
 import { GET, PATCH } from "./route";
 

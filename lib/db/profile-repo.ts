@@ -42,3 +42,14 @@ export async function updateProfileAvatarColor(profileId: string, avatarColor: s
   if (error) throw error;
   return data ? toSafeProfile(data as ProfileRow) : null;
 }
+
+export async function updateProfileAvatarPath(profileId: string, avatarPath: string | null): Promise<SafeProfile | null> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.from("profiles")
+    .update({ avatar_path: avatarPath, updated_at: new Date().toISOString() })
+    .eq("id", profileId)
+    .select(SAFE_PROFILE_FIELDS)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? toSafeProfile(data as ProfileRow) : null;
+}

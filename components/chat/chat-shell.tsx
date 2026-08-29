@@ -665,7 +665,7 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
               <Menu.Target>
                 <UnstyledButton type="button" aria-label="Open profile menu" style={{ cursor: "pointer", borderRadius: "50%" }}>
                   <ProfileAvatar displayName={profile?.displayName} email={profile?.email}
-                    avatarColor={profile?.avatarColor ?? "#228BE6"} size={36} />
+                    avatarColor={profile?.avatarColor ?? "#228BE6"} avatarUrl={profile?.avatarUrl} size={36} />
                 </UnstyledButton>
               </Menu.Target>
               <Menu.Dropdown>

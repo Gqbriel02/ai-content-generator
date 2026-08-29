@@ -59,6 +59,7 @@ export type SafeProfile = {
   displayName: string;
   avatarPath: string | null;
   avatarColor: string;
+  avatarUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 };

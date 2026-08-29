@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => 
 
 import { ChatShell } from "@/components/chat/chat-shell";
 import { ProfileEditor } from "./profile-editor";
+import { ProfileAvatar } from "./profile-avatar";
 
 const profile = { id: "owner", email: "gabriel@example.com", displayName: "Gabriel Ionita", avatarPath: null,
   avatarColor: "#228BE6", createdAt: "2026-08-05T00:00:00Z", updatedAt: "2026-08-05T00:00:00Z" };
@@ -70,5 +71,34 @@ describe("profile UI", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/profile", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ avatarColor: "#7950F2" }) }));
     expect(save.disabled).toBe(true);
     expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it("falls back to initials when the browser cannot load a signed avatar image", async () => {
+    await act(async () => { root.render(<MantineProvider><ProfileAvatar displayName="Gabriel Ionita" email="gabriel@example.com"
+      avatarColor="#7950F2" avatarUrl="https://private.example/signed" /></MantineProvider>); });
+    const image = document.querySelector("img") as HTMLImageElement;
+    expect(image.src).toBe("https://private.example/signed");
+    await act(async () => image.dispatchEvent(new Event("error")));
+    expect(document.querySelector("img")).toBeNull();
+    expect(document.body.textContent).toContain("GI");
+  });
+
+  it("keeps a selected photo local until explicit Save photo and revokes the preview", async () => {
+    const createObjectURL = vi.fn(() => "blob:local-avatar"); const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: { ...profile, avatarPath: "owner/avatar/new.png", avatarUrl: "https://private.example/new" } }, { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profile} /></MantineProvider>); });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])], "mine.png", { type: "image/png" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => { input.dispatchEvent(new Event("change", { bubbles: true })); await Promise.resolve(); });
+    expect(createObjectURL).toHaveBeenCalledWith(file); expect(fetchMock).not.toHaveBeenCalled();
+    expect((document.querySelector('img[src="blob:local-avatar"]') as HTMLImageElement)).not.toBeNull();
+    const savePhoto = Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.includes("Save photo")) as HTMLButtonElement;
+    await act(async () => { savePhoto.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(fetchMock).toHaveBeenCalledWith("/api/profile/avatar", expect.objectContaining({ method: "POST", body: expect.any(FormData) }));
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:local-avatar");
   });
 });
