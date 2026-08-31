@@ -14,6 +14,21 @@ import { ProfileAvatar } from "./profile-avatar";
 
 const profile = { id: "owner", email: "gabriel@example.com", displayName: "Gabriel Ionita", avatarPath: null,
   avatarColor: "#228BE6", createdAt: "2026-08-05T00:00:00Z", updatedAt: "2026-08-05T00:00:00Z" };
+const profileWithAvatar = { ...profile, avatarPath: "owner/avatar/photo.webp", avatarUrl: "https://private.example/photo" };
+
+function modalButton(name: string) {
+  return Array.from(document.querySelectorAll(".mantine-Modal-root button")).find((element) => element.textContent?.trim() === name) as HTMLButtonElement;
+}
+
+async function openRemovePhotoModal() {
+  await act(async () => {
+    const trigger = document.querySelector('[data-testid="open-remove-photo-modal"]') as HTMLButtonElement;
+    trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    trigger.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+}
 
 describe("profile UI", () => {
   let container: HTMLDivElement;
@@ -117,5 +132,65 @@ describe("profile UI", () => {
     await act(async () => { savePhoto.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
     expect(fetchMock).toHaveBeenCalledWith("/api/profile/avatar", expect.objectContaining({ method: "POST", body: expect.any(FormData) }));
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:local-avatar");
+  });
+
+  it("requires modal confirmation before removing a profile photo and Cancel makes no request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profileWithAvatar} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+    await openRemovePhotoModal();
+    expect(document.body.textContent).toContain("Remove profile photo?");
+    expect(document.body.textContent).toContain("Are you sure you want to remove your profile photo? Your initials and fallback color will be shown instead.");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await act(async () => { modalButton("Cancel").click(); await new Promise((resolve) => setTimeout(resolve, 400)); });
+    expect(document.body.textContent).not.toContain("Remove profile photo?");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector('img[src="https://private.example/photo"]')).not.toBeNull();
+  });
+
+  it("dismisses the remove-photo modal with its close button without deleting", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profileWithAvatar} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    await openRemovePhotoModal();
+    const close = document.querySelector('.mantine-Modal-close') as HTMLButtonElement;
+    await act(async () => { close.click(); await new Promise((resolve) => setTimeout(resolve, 400)); });
+    expect(document.body.textContent).not.toContain("Remove profile photo?");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("runs one DELETE only after confirmation, locks duplicate submission, and preserves the fallback color", async () => {
+    let resolveRemoval!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveRemoval = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profileWithAvatar} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    await openRemovePhotoModal();
+    const confirm = modalButton("Remove photo");
+    await act(async () => { confirm.click(); confirm.click(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/profile/avatar", { method: "DELETE" });
+    expect(confirm.disabled).toBe(true);
+    expect(modalButton("Cancel").disabled).toBe(true);
+
+    await act(async () => { resolveRemoval(Response.json({ data: { ...profile, avatarUrl: null } })); await new Promise((resolve) => setTimeout(resolve, 400)); });
+    expect(document.body.textContent).not.toContain("Remove profile photo?");
+    expect(document.querySelector('img[src="https://private.example/photo"]')).toBeNull();
+    expect(document.body.textContent).toContain("GI");
+    expect((document.querySelector(".mantine-Avatar-root") as HTMLElement).style.backgroundColor).toBe("rgb(34, 139, 230)");
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the photo and modal available for retry when removal fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ error: { message: "Removal failed." } }, { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profileWithAvatar} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    await openRemovePhotoModal();
+    await act(async () => { modalButton("Remove photo").click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain("Remove profile photo?");
+    expect(document.querySelector('img[src="https://private.example/photo"]')).not.toBeNull();
+    expect(router.refresh).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Card, ColorInput, Divider, FileButton, Group, Stack, Text, Title } from "@mantine/core";
+import { Box, Button, Card, ColorInput, Divider, FileButton, Group, Modal, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconArrowLeft, IconPhoto, IconTrash, IconX } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
@@ -22,6 +22,8 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [removingPhoto, setRemovingPhoto] = useState(false);
+  const [removePhotoModalOpen, setRemovePhotoModalOpen] = useState(false);
+  const removingPhotoRef = useRef(false);
   const localPreviewRef = useRef<string | null>(null);
   const normalizedDraft = normalizeAvatarColor(draftColor);
   const error = draftColor.length > 0 && !normalizedDraft ? "Enter a six-digit HEX color such as #228BE6." : undefined;
@@ -62,17 +64,19 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
   }
 
   async function removePhoto() {
-    if (removingPhoto) return;
+    if (removingPhotoRef.current) return;
+    removingPhotoRef.current = true;
     setRemovingPhoto(true);
     try {
       const response = await fetch("/api/profile/avatar", { method: "DELETE" }); const json = await response.json();
       if (!response.ok) throw new Error(json?.error?.message ?? "Could not remove profile photo.");
       clearLocalPreview(); setAvatarUrl(null);
       notifications.show({ color: "green", title: "Profile photo removed", message: "Your initials and fallback color are active again." });
+      setRemovePhotoModalOpen(false);
       router.refresh();
     } catch (cause) {
       notifications.show({ color: "red", title: "Profile photo not removed", message: cause instanceof Error ? cause.message : "Please try again." });
-    } finally { setRemovingPhoto(false); }
+    } finally { removingPhotoRef.current = false; setRemovingPhoto(false); }
   }
 
   function handleColorChange(value: string) {
@@ -128,7 +132,7 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
           <ProfileAvatar displayName={profile.displayName} email={profile.email} avatarColor={lastValidColor} avatarUrl={displayedAvatarUrl} size={88} />
           <Group gap="xs" wrap="wrap">
             <FileButton onChange={selectPhoto} accept="image/jpeg,image/png,image/webp">{(props) => <Button {...props} variant="light" leftSection={<IconPhoto size={17} />} disabled={savingPhoto || removingPhoto}>{avatarUrl || selectedFile ? "Change photo" : "Upload photo"}</Button>}</FileButton>
-            {selectedFile ? <><Button onClick={savePhoto} loading={savingPhoto} disabled={removingPhoto}>Save photo</Button><Button variant="default" leftSection={<IconX size={16} />} onClick={clearLocalPreview} disabled={savingPhoto}>Cancel</Button></> : avatarUrl ? <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={removePhoto} loading={removingPhoto}>Remove photo</Button> : null}
+            {selectedFile ? <><Button onClick={savePhoto} loading={savingPhoto} disabled={removingPhoto}>Save photo</Button><Button variant="default" leftSection={<IconX size={16} />} onClick={clearLocalPreview} disabled={savingPhoto}>Cancel</Button></> : avatarUrl ? <Button data-testid="open-remove-photo-modal" color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={() => setRemovePhotoModalOpen(true)}>Remove photo</Button> : null}
           </Group>
         </Group><Text size="xs" c="dimmed">JPEG, PNG, or WebP. Maximum 5 MB.</Text></Stack>
         <Divider />
@@ -136,5 +140,22 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
         <Group justify="flex-end"><Button onClick={save} disabled={!canSave} loading={saving}>Save changes</Button></Group>
       </Stack></Card>
     </Stack>
+    <Modal
+      opened={removePhotoModalOpen}
+      onClose={() => { if (!removingPhoto) setRemovePhotoModalOpen(false); }}
+      title="Remove profile photo?"
+      centered
+      closeOnClickOutside={!removingPhoto}
+      closeOnEscape={!removingPhoto}
+      withCloseButton={!removingPhoto}
+    >
+      <Stack gap="lg">
+        <Text size="sm">Are you sure you want to remove your profile photo? Your initials and fallback color will be shown instead.</Text>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setRemovePhotoModalOpen(false)} disabled={removingPhoto} autoFocus>Cancel</Button>
+          <Button color="red" onClick={removePhoto} loading={removingPhoto} disabled={removingPhoto}>Remove photo</Button>
+        </Group>
+      </Stack>
+    </Modal>
   </Box>;
 }
