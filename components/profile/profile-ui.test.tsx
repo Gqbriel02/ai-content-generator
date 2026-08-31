@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/chat", useParams: () => ({}) }));
 
 import { ChatShell } from "@/components/chat/chat-shell";
@@ -103,6 +103,9 @@ describe("profile UI", () => {
     expect(stickyHeader.style.position).toBe("sticky"); expect(stickyHeader.style.top).toBe("0rem");
     const page = document.querySelector('[data-testid="profile-page-background"]') as HTMLElement;
     expect(page.style.backgroundColor).toBe("rgb(248, 251, 255)"); expect(page.style.minHeight).toBe("100dvh");
+    const danger = document.querySelector('[data-testid="danger-zone-card"]') as HTMLElement;
+    expect(appearance.compareDocumentPosition(danger) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.body.textContent).toContain("Danger zone"); expect(document.body.textContent).toContain("Logout");
   });
 
   it("falls back to initials when the browser cannot load a signed avatar image", async () => {
@@ -192,5 +195,52 @@ describe("profile UI", () => {
     expect(document.body.textContent).toContain("Remove profile photo?");
     expect(document.querySelector('img[src="https://private.example/photo"]')).not.toBeNull();
     expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("logs out from the sticky header without invoking account deletion", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: { success: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profile} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const logout = Array.from(document.querySelectorAll("button")).find((item) => item.textContent?.trim() === "Logout") as HTMLButtonElement;
+    await act(async () => { logout.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(fetchMock).toHaveBeenCalledOnce(); expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" });
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/profile", expect.objectContaining({ method: "DELETE" }));
+    expect(router.push).toHaveBeenCalledWith("/login"); expect(router.refresh).toHaveBeenCalledOnce();
+  });
+
+  it("opens account confirmation without deleting and sends one DELETE only after valid confirmation", async () => {
+    let resolveDelete!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveDelete = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profile} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const trigger = Array.from(document.querySelectorAll("button")).find((item) => item.textContent?.trim() === "Delete account") as HTMLButtonElement;
+    await act(async () => { trigger.click(); await new Promise((resolve) => setTimeout(resolve, 250)); });
+    expect(fetchMock).not.toHaveBeenCalled();
+    const checkbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    const input = document.querySelector('input[placeholder="DELETE"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    await act(async () => checkbox.click());
+    await act(async () => { setter?.call(input, "DELETE"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const confirm = Array.from(document.querySelectorAll(".mantine-Modal-root button")).find((item) => item.textContent?.trim() === "Delete account") as HTMLButtonElement;
+    await act(async () => { confirm.click(); confirm.click(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1); expect(fetchMock).toHaveBeenCalledWith("/api/profile", { method: "DELETE" });
+    expect(confirm.disabled).toBe(true);
+    await act(async () => { resolveDelete(Response.json({ data: { success: true } })); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(router.replace).toHaveBeenCalledWith("/login"); expect(router.refresh).toHaveBeenCalledOnce();
+  });
+
+  it("keeps account deletion modal usable and does not redirect after a failed request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ error: { message: "Could not delete your account. Please try again." } }, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => { root.render(<MantineProvider><ProfileEditor profile={profile} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const trigger = Array.from(document.querySelectorAll("button")).find((item) => item.textContent?.trim() === "Delete account") as HTMLButtonElement;
+    await act(async () => { trigger.click(); await new Promise((resolve) => setTimeout(resolve, 250)); });
+    const checkbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    const input = document.querySelector('input[placeholder="DELETE"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    await act(async () => checkbox.click()); await act(async () => { setter?.call(input, "DELETE"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const confirm = Array.from(document.querySelectorAll(".mantine-Modal-root button")).find((item) => item.textContent?.trim() === "Delete account") as HTMLButtonElement;
+    await act(async () => { confirm.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(router.replace).not.toHaveBeenCalled(); expect(document.body.textContent).toContain("Delete account?"); expect(confirm.disabled).toBe(false);
   });
 });

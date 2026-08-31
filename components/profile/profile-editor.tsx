@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Card, ColorInput, Divider, FileButton, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { Box, Button, Card, ColorInput, Divider, FileButton, Group, Modal, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconPhoto, IconTrash, IconX } from "@tabler/icons-react";
+import { IconArrowLeft, IconLogout, IconPhoto, IconTrash, IconX } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
+import { DeleteAccountModal } from "@/components/profile/delete-account-modal";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { normalizeAvatarColor, type SafeProfile } from "@/lib/profile/identity";
 
@@ -23,7 +24,12 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [removingPhoto, setRemovingPhoto] = useState(false);
   const [removePhotoModalOpen, setRemovePhotoModalOpen] = useState(false);
+  const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const removingPhotoRef = useRef(false);
+  const deletingAccountRef = useRef(false);
+  const loggingOutRef = useRef(false);
   const localPreviewRef = useRef<string | null>(null);
   const normalizedDraft = normalizeAvatarColor(draftColor);
   const error = draftColor.length > 0 && !normalizedDraft ? "Enter a six-digit HEX color such as #228BE6." : undefined;
@@ -99,6 +105,35 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
     } finally { setSaving(false); }
   }
 
+  async function logout() {
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true; setLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        const json = await response.json();
+        throw new Error(json?.error?.message ?? "Could not log out.");
+      }
+      router.push("/login"); router.refresh();
+    } catch (cause) {
+      notifications.show({ color: "red", title: "Logout failed", message: cause instanceof Error ? cause.message : "Please try again." });
+    } finally { loggingOutRef.current = false; setLoggingOut(false); }
+  }
+
+  async function deleteAccount() {
+    if (deletingAccountRef.current) return;
+    deletingAccountRef.current = true; setDeletingAccount(true);
+    try {
+      const response = await fetch("/api/profile", { method: "DELETE" });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error?.message ?? "Could not delete your account. Please try again.");
+      setDeleteAccountModalOpen(false);
+      router.replace("/login"); router.refresh();
+    } catch (cause) {
+      notifications.show({ color: "red", title: "Account not deleted", message: cause instanceof Error ? cause.message : "Please try again." });
+    } finally { deletingAccountRef.current = false; setDeletingAccount(false); }
+  }
+
   const memberSince = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date(profile.createdAt));
   const displayedAvatarUrl = localPreviewUrl ?? avatarUrl;
 
@@ -111,12 +146,11 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
       style={{ zIndex: 10, borderBottom: "1px solid var(--mantine-color-gray-3)", backgroundColor: "#f8fbff" }}
       data-testid="profile-sticky-header"
     >
-      <Group maw={760} mx="auto" px={{ base: "md", sm: "xl" }} py="sm" justify="space-between" wrap="wrap">
-        <Button variant="subtle" color="dark" leftSection={<IconArrowLeft size={18} />} onClick={() => router.push("/chat")}>
-          Back to chats
-        </Button>
-        <Title order={2}>Profile</Title>
-      </Group>
+      <SimpleGrid cols={{ base: 1, xs: 3 }} maw={760} mx="auto" px={{ base: "md", sm: "xl" }} py="sm" spacing="xs" verticalSpacing="xs">
+        <Group justify="flex-start"><Button variant="subtle" color="dark" leftSection={<IconArrowLeft size={18} />} onClick={() => router.push("/chat")}>Back to chats</Button></Group>
+        <Group justify="center"><Title order={2}>Profile</Title></Group>
+        <Group justify="flex-end"><Button variant="subtle" color="dark" leftSection={<IconLogout size={18} />} onClick={logout} loading={loggingOut}>Logout</Button></Group>
+      </SimpleGrid>
     </Box>
     <Stack gap="lg" maw={760} mx="auto" px={{ base: "md", sm: "xl" }} py="xl">
       <Card withBorder radius="lg" p={{ base: "md", sm: "xl" }} data-testid="account-information-card">
@@ -139,6 +173,14 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
         <ColorInput label="Avatar fallback color" description="Used whenever your profile photo is removed or unavailable. Six-digit HEX value." value={draftColor} onChange={handleColorChange} error={error} format="hex" withEyeDropper={false} swatches={[]} />
         <Group justify="flex-end"><Button onClick={save} disabled={!canSave} loading={saving}>Save changes</Button></Group>
       </Stack></Card>
+      <Card withBorder radius="lg" p={{ base: "md", sm: "xl" }} data-testid="danger-zone-card"
+        style={{ borderColor: "var(--mantine-color-red-4)" }}>
+        <Stack gap="md">
+          <Title order={3} c="red">Danger zone</Title>
+          <div><Text fw={600}>Delete account</Text><Text size="sm" c="dimmed">Permanently delete your account and all associated data. This action cannot be undone.</Text></div>
+          <Group justify="flex-end"><Button color="red" leftSection={<IconTrash size={16} />} onClick={() => setDeleteAccountModalOpen(true)}>Delete account</Button></Group>
+        </Stack>
+      </Card>
     </Stack>
     <Modal
       opened={removePhotoModalOpen}
@@ -157,5 +199,7 @@ export function ProfileEditor({ profile }: { profile: SafeProfile }) {
         </Group>
       </Stack>
     </Modal>
+    <DeleteAccountModal opened={deleteAccountModalOpen} deleting={deletingAccount}
+      onClose={() => setDeleteAccountModalOpen(false)} onConfirm={deleteAccount} />
   </Box>;
 }

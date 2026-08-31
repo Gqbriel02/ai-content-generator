@@ -1,8 +1,10 @@
 import { requireSession } from "@/lib/auth/require-session";
-import { findSafeProfileById, updateProfileAvatarColor } from "@/lib/db/profile-repo";
+import { clearAuthCookie } from "@/lib/auth/session";
+import { deleteProfileById, findSafeProfileById, updateProfileAvatarColor } from "@/lib/db/profile-repo";
 import { fail, ok } from "@/lib/http/responses";
 import { updateAvatarColorSchema } from "@/lib/validation/profile";
 import { withProfileAvatarUrl } from "@/lib/profile/profile-view";
+import { removeProfileOwnedAccountMedia } from "@/lib/storage/account-media";
 
 export async function GET() {
   const auth = await requireSession();
@@ -26,4 +28,26 @@ export async function PATCH(request: Request) {
 
   const profile = await updateProfileAvatarColor(auth.session.profileId, parsed.data.avatarColor);
   return profile ? ok(await withProfileAvatarUrl(profile)) : fail("Profile not found.", 404);
+}
+
+export async function DELETE() {
+  const auth = await requireSession();
+  if ("error" in auth) return auth.error;
+
+  try {
+    await removeProfileOwnedAccountMedia(auth.session.profileId);
+  } catch {
+    return fail("Could not delete your account. Please try again.", 503);
+  }
+
+  try {
+    const deleted = await deleteProfileById(auth.session.profileId);
+    if (!deleted) return fail("Could not delete your account. Please try again.", 404);
+  } catch (error) {
+    console.error("Account database deletion failed after storage cleanup.", error);
+    return fail("Could not delete your account. Please try again.", 503);
+  }
+
+  await clearAuthCookie();
+  return ok({ success: true });
 }

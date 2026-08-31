@@ -53,3 +53,10 @@ export async function updateProfileAvatarPath(profileId: string, avatarPath: str
   if (error) throw error;
   return data ? toSafeProfile(data as ProfileRow) : null;
 }
+
+export async function deleteProfileById(profileId: string): Promise<boolean> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase.from("profiles").delete().eq("id", profileId).select("id").maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
