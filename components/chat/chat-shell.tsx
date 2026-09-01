@@ -65,6 +65,7 @@ import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { MoveChatModal } from "@/components/chat/move-chat-modal";
 import { NoFolderDropZone } from "@/components/chat/no-folder-drop-zone";
 import { deriveHistoryTree } from "@/components/chat/history-tree";
+import type { HistoryContentFilter } from "@/types/domain";
 import { MessageCard } from "@/components/chat/message-card";
 import { createClientTemporaryId } from "@/lib/client/temporary-id";
 import { readResponseJson } from "@/lib/http/client-response";
@@ -142,6 +143,7 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
+  const [historyType, setHistoryType] = useState<HistoryContentFilter>("all");
   const [content, setContent] = useState("");
   const [answerMode, setAnswerMode] = useState<AnswerMode>(DEFAULT_ANSWER_MODE);
   const [generationType, setGenerationType] = useState<"text" | "image">("text");
@@ -172,8 +174,12 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
   );
-  const historyTree = useMemo(() => deriveHistoryTree(folders, chats, search), [folders, chats, search]);
+  const historyTree = useMemo(
+    () => deriveHistoryTree(folders, chats, search, historyType !== "all"),
+    [folders, chats, search, historyType],
+  );
   const hasSearchResults = historyTree.visibleFolders.length > 0 || historyTree.noFolderChats.length > 0;
+  const historyFiltering = Boolean(search || historyType !== "all");
   const conversationOwnerKey = activeChatId ?? `draft:${draftFolderId ?? "no-folder"}`;
   const activeOwnerRef = useRef(conversationOwnerKey);
   activeOwnerRef.current = conversationOwnerKey;
@@ -225,7 +231,7 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
         title: "Chat not moved",
         message: error instanceof Error ? error.message : "The chat could not be moved. Please try again.",
       });
-      await fetchBootstrap(search, sort);
+      await fetchBootstrap(search, sort, historyType);
       return false;
     } finally {
       moveRequestsPending.current.delete(chat.id);
@@ -251,13 +257,14 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
     void moveChatToFolder(chat, folderId);
   }
 
-  async function fetchBootstrap(nextSearch = search, nextSort = sort) {
+  async function fetchBootstrap(nextSearch = search, nextSort = sort, nextType = historyType) {
     setLoading(true);
     setHistoryError(false);
     try {
       const query = new URLSearchParams();
       if (nextSearch) query.set("q", nextSearch);
       if (nextSort === "oldest") query.set("sort", "oldest");
+      if (nextType !== "all") query.set("type", nextType);
       const [folderRes, chatRes] = await Promise.all([
         fetch("/api/folders"),
         fetch(`/api/chats${query.size ? `?${query}` : ""}`),
@@ -297,19 +304,28 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const restoreHistoryQuery = async () => {
       if (cancelled) return;
       const query = new URLSearchParams(window.location.search);
       const initialSearch = (query.get("q") ?? "").trim().slice(0, 200);
       const initialSort = query.get("sort") === "oldest" ? "oldest" : "newest";
+      const initialType = query.get("type") === "text" || query.get("type") === "image"
+        ? query.get("type") as HistoryContentFilter
+        : "all";
       setSearchDraft(initialSearch);
       setSearch(initialSearch);
       setSort(initialSort);
-      await fetchBootstrap(initialSearch, initialSort);
-    })();
+      setHistoryType(initialType);
+      await fetchBootstrap(initialSearch, initialSort, initialType);
+    };
+    void restoreHistoryQuery();
+    window.addEventListener("popstate", restoreHistoryQuery);
     return () => {
       cancelled = true;
+      window.removeEventListener("popstate", restoreHistoryQuery);
     };
+  // The restore callback always supplies all three URL-derived values explicitly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -346,21 +362,25 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
     const query = new URLSearchParams();
     if (search) query.set("q", search);
     if (sort === "oldest") query.set("sort", "oldest");
+    if (historyType !== "all") query.set("type", historyType);
     return `/chat/${targetChatId}${query.size ? `?${query}` : ""}`;
   }
 
-  function applyHistoryQuery(nextSearch: string, nextSort: "newest" | "oldest") {
+  function applyHistoryQuery(nextSearch: string, nextSort: "newest" | "oldest", nextType = historyType) {
     const normalizedSearch = nextSearch.trim();
     setSearch(normalizedSearch);
     setSearchDraft(normalizedSearch);
     setSort(nextSort);
+    setHistoryType(nextType);
     const query = new URLSearchParams(window.location.search);
     if (normalizedSearch) query.set("q", normalizedSearch);
     else query.delete("q");
     if (nextSort === "oldest") query.set("sort", "oldest");
     else query.delete("sort");
-    window.history.replaceState(null, "", `${window.location.pathname}${query.size ? `?${query}` : ""}`);
-    void fetchBootstrap(normalizedSearch, nextSort);
+    if (nextType !== "all") query.set("type", nextType);
+    else query.delete("type");
+    window.history.pushState(null, "", `${window.location.pathname}${query.size ? `?${query}` : ""}`);
+    void fetchBootstrap(normalizedSearch, nextSort, nextType);
   }
 
   async function updateRating(next: 1 | -1) {
@@ -711,6 +731,22 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
             onChange={(value) => applyHistoryQuery(search, value === "oldest" ? "oldest" : "newest")}
             allowDeselect={false}
           />
+          <SegmentedControl
+            aria-label="Filter history by content type"
+            value={historyType}
+            fullWidth
+            size="xs"
+            onChange={(value) => applyHistoryQuery(
+              search,
+              sort,
+              value === "text" || value === "image" ? value : "all",
+            )}
+            data={[
+              { value: "all", label: "All" },
+              { value: "text", label: "Text only" },
+              { value: "image", label: "Images" },
+            ]}
+          />
           {historyError ? (
             <Stack gap="xs">
               <Text size="sm" c="red">History could not be loaded.</Text>
@@ -720,11 +756,11 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
             <Group gap="xs"><Loader size="sm" /><Text size="sm">Loading history…</Text></Group>
           ) : !hasSearchResults ? (
             <Text size="sm" c="dimmed">
-              {search ? "No matching chats or folders." : "No history yet. Create a chat to get started."}
+              {historyFiltering ? "No matching chats or folders." : "No history yet. Create a chat to get started."}
             </Text>
           ) : null}
-          {(!search || historyTree.visibleFolders.length > 0) ? <Text fw={600}>Folders</Text> : null}
-          {!loading && !historyError && (!search || historyTree.visibleFolders.length > 0) ? (
+          {(!historyFiltering || historyTree.visibleFolders.length > 0) ? <Text fw={600}>Folders</Text> : null}
+          {!loading && !historyError && (!historyFiltering || historyTree.visibleFolders.length > 0) ? (
             <ScrollArea.Autosize
               type="auto"
               scrollbars="y"
@@ -769,7 +805,7 @@ export function ChatShell({ chatId, profile }: ChatShellProps) {
               </Stack>
             </ScrollArea.Autosize>
           ) : null}
-          {!loading && !historyError && (!search || historyTree.noFolderChats.length > 0) ? (
+          {!loading && !historyError && (!historyFiltering || historyTree.noFolderChats.length > 0) ? (
             <NoFolderDropZone>
             <Text fw={600} px={4} py={2}>No Folder</Text>
             <ScrollArea

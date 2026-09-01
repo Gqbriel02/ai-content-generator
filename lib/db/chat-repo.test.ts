@@ -8,6 +8,7 @@ vi.mock("@/lib/db/supabase", () => ({
 
 import {
   filterAndSortChats,
+  hasGeneratedAssistantImage,
   listChats,
   listMessages,
   persistChatExchange,
@@ -343,6 +344,31 @@ describe("chat history", () => {
     expect(filterAndSortChats(tied, "", "oldest").map((chat) => chat.id)).toEqual(["a", "b"]);
   });
 
+  it("classifies only assistant image attachments in a generated path as image output", () => {
+    const assistantGenerated = { ...chats[0], messages: [{ role: "assistant", message_attachments: [
+      { storage_path: "owner/chat/generated/result.webp", mime_type: "image/webp" },
+    ] }] };
+    const userReuse = { ...chats[1], messages: [{ role: "user", message_attachments: [
+      { storage_path: "owner/chat/generated/reused.webp", mime_type: "image/webp" },
+    ] }] };
+    expect(hasGeneratedAssistantImage(assistantGenerated)).toBe(true);
+    expect(hasGeneratedAssistantImage(userReuse)).toBe(false);
+  });
+
+  it("composes content filtering with search, sorting, and the final limit", () => {
+    const records = Array.from({ length: 105 }, (_, index) => ({
+      id: String(index).padStart(3, "0"), title: `Cat ${index}`,
+      created_at: new Date(Date.UTC(2025, 0, index + 1)).toISOString(),
+      messages: index < 5 ? [] : [{ role: "assistant", message_attachments: [
+        { storage_path: `owner/chat/generated/${index}.webp`, mime_type: "image/webp" },
+      ] }],
+    }));
+    expect(filterAndSortChats(records, "cat", "oldest", "image")).toHaveLength(100);
+    expect(filterAndSortChats(records, "cat", "oldest", "image")[0].id).toBe("005");
+    expect(filterAndSortChats(records, "cat", "newest", "text").map((chat) => chat.id))
+      .toEqual(["004", "003", "002", "001", "000"]);
+  });
+
   it("scopes the Supabase history query to profile_id", async () => {
     const eq = vi.fn().mockResolvedValue({ data: [], error: null });
     const select = vi.fn(() => ({ eq }));
@@ -352,7 +378,7 @@ describe("chat history", () => {
     expect(eq).toHaveBeenCalledWith("profile_id", "owner-profile");
     expect(select).toHaveBeenCalledWith(expect.stringContaining("title"));
     expect(select).toHaveBeenCalledWith(expect.stringContaining("model_name"));
-    expect(select).not.toHaveBeenCalledWith(expect.stringContaining("messages"));
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("messages(role"));
   });
 });
 

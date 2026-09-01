@@ -65,7 +65,7 @@ describe("createMessageSchema", () => {
 
 describe("historyQuerySchema", () => {
   it("trims search and defaults to newest", () => {
-    expect(historyQuerySchema.parse({ q: "  example  " })).toEqual({ q: "example", sort: "newest" });
+    expect(historyQuerySchema.parse({ q: "  example  " })).toEqual({ q: "example", sort: "newest", type: "all" });
   });
 
   it.each(["newest", "oldest"])("accepts the %s sort", (sort) => {
@@ -75,6 +75,14 @@ describe("historyQuerySchema", () => {
   it("rejects unknown sorts and overly long searches", () => {
     expect(historyQuerySchema.safeParse({ q: "", sort: "title" }).success).toBe(false);
     expect(historyQuerySchema.safeParse({ q: "a".repeat(201), sort: "newest" }).success).toBe(false);
+  });
+
+  it.each(["all", "text", "image"])("accepts the %s content filter", (type) => {
+    expect(historyQuerySchema.safeParse({ q: "", sort: "newest", type }).success).toBe(true);
+  });
+
+  it("rejects an unknown content filter", () => {
+    expect(historyQuerySchema.safeParse({ q: "", sort: "newest", type: "video" }).success).toBe(false);
   });
 });
 

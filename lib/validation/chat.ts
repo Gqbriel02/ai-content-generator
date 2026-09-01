@@ -31,6 +31,7 @@ export const HISTORY_SEARCH_MAX_LENGTH = 200;
 export const historyQuerySchema = z.object({
   q: z.string().trim().max(HISTORY_SEARCH_MAX_LENGTH).default(""),
   sort: z.enum(["newest", "oldest"]).default("newest"),
+  type: z.enum(["all", "text", "image"]).default("all"),
 });
 
 export const ratingSchema = z.object({

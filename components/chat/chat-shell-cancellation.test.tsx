@@ -96,7 +96,7 @@ describe("ChatShell text cancellation", () => {
     expect(document.querySelector('button[aria-label="send"]')).not.toBeNull();
     expect(router.push).not.toHaveBeenCalled();
 
-    const imageChoice = document.querySelector('input[value="image"]') as HTMLInputElement;
+    const imageChoice = document.querySelector('[aria-label="Generation type"] input[value="image"]') as HTMLInputElement;
     await act(async () => imageChoice.click());
     await enterPromptAndSend("A castle at sunset");
 

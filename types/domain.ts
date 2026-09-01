@@ -1,5 +1,7 @@
 export type Role = "system" | "user" | "assistant" | "tool";
 
+export type HistoryContentFilter = "all" | "text" | "image";
+
 export type AttachmentInput = {
   storagePath: string;
   mimeType: string;

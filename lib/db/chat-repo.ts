@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/db/supabase";
-import type { AttachmentInput } from "@/types/domain";
+import type { AttachmentInput, HistoryContentFilter } from "@/types/domain";
 import type { AnswerMode } from "@/lib/ai/answer-modes";
 
 export async function listFolders(profileId: string) {
@@ -90,19 +90,37 @@ type HistoryChat = {
   id: string;
   title: string;
   created_at: string;
+  messages?: {
+    role?: string;
+    content_text?: string;
+    message_attachments?: { storage_path?: string; mime_type?: string }[] | null;
+  }[] | null;
   [key: string]: unknown;
 };
+
+export function hasGeneratedAssistantImage(chat: HistoryChat) {
+  return (chat.messages ?? []).some((message) =>
+    message.role === "assistant" && (message.message_attachments ?? []).some((attachment) =>
+      attachment.mime_type?.startsWith("image/") === true &&
+      attachment.storage_path?.split("/").includes("generated") === true,
+    ),
+  );
+}
 
 export function filterAndSortChats(
   chats: HistoryChat[],
   search: string,
   sort: HistorySort,
+  type: HistoryContentFilter = "all",
   limit = CHAT_HISTORY_LIMIT,
 ) {
   const needle = search.trim().toLocaleLowerCase();
-  const filtered = needle
+  const searchMatches = needle
     ? chats.filter((chat) => chat.title.toLocaleLowerCase().includes(needle))
     : chats;
+  const filtered = type === "all" ? searchMatches : searchMatches.filter((chat) =>
+    type === "image" ? hasGeneratedAssistantImage(chat) : !hasGeneratedAssistantImage(chat),
+  );
 
   return filtered
     .toSorted((left, right) => {
@@ -115,23 +133,28 @@ export function filterAndSortChats(
         : right.id.localeCompare(left.id);
     })
     .slice(0, limit)
-    .map((chat) => ({ ...chat }));
+    .map((chat) => {
+      const publicChat = { ...chat };
+      delete publicChat.messages;
+      return publicChat;
+    });
 }
 
 export async function listChats(
   profileId: string,
-  options: { search?: string; sort?: HistorySort; limit?: number } = {},
+  options: { search?: string; sort?: HistorySort; type?: HistoryContentFilter; limit?: number } = {},
 ) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("chats")
-    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at")
+    .select("id, profile_id, folder_id, title, model_name, rating, created_at, updated_at, messages(role, message_attachments(storage_path, mime_type))")
     .eq("profile_id", profileId);
   if (error) throw error;
   return filterAndSortChats(
     (data ?? []) as HistoryChat[],
     options.search ?? "",
     options.sort ?? "newest",
+    options.type ?? "all",
     Math.min(options.limit ?? CHAT_HISTORY_LIMIT, CHAT_HISTORY_LIMIT),
   );
 }

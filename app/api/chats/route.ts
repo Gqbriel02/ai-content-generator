@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   const parsed = historyQuerySchema.safeParse({
     q: url.searchParams.get("q") ?? "",
     sort: url.searchParams.get("sort") ?? "newest",
+    type: url.searchParams.get("type") ?? "all",
   });
   if (!parsed.success) return fail("Invalid history query.", 400, parsed.error.flatten());
 
@@ -18,6 +19,7 @@ export async function GET(request: Request) {
     const chats = await listChats(auth.session.profileId, {
       search: parsed.data.q,
       sort: parsed.data.sort,
+      type: parsed.data.type,
     });
     return ok(chats);
   } catch (error) {

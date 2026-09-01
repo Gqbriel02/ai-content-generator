@@ -5,6 +5,7 @@ export function deriveHistoryTree<TFolder extends HistoryFolder, TChat extends H
   folders: TFolder[],
   chats: TChat[],
   search: string,
+  hideEmptyFolders = false,
 ) {
   const needle = search.trim().toLocaleLowerCase();
   const matchingChats = needle
@@ -25,7 +26,9 @@ export function deriveHistoryTree<TFolder extends HistoryFolder, TChat extends H
       chats: chatsByFolder.get(folder.id) ?? [],
       nameMatches: Boolean(needle && folder.name.toLocaleLowerCase().includes(needle)),
     }))
-    .filter(({ chats: childChats, nameMatches }) => !needle || nameMatches || childChats.length > 0);
+    .filter(({ chats: childChats, nameMatches }) => needle
+      ? nameMatches || childChats.length > 0
+      : !hideEmptyFolders || childChats.length > 0);
 
   return {
     visibleFolders,

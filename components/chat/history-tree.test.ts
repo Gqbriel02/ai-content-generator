@@ -39,4 +39,9 @@ describe("deriveHistoryTree", () => {
     expect(tree.visibleFolders[0].chats).toEqual([chats[0], chats[1]]);
     expect(tree.noFolderChats).toEqual([chats[3]]);
   });
+
+  it("hides folders without surviving chats when another history filter is active", () => {
+    const tree = deriveHistoryTree(folders, [chats[0]], "", true);
+    expect(tree.visibleFolders.map(({ folder }) => folder.id)).toEqual(["recipes"]);
+  });
 });
