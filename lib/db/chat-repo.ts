@@ -368,25 +368,6 @@ export async function findSameChatGeneratedAttachments(profileId: string, chatId
   }));
 }
 
-export async function createMessage(input: {
-  chatId: string;
-  role: "system" | "user" | "assistant" | "tool";
-  contentText: string;
-}) {
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("messages")
-    .insert({
-      chat_id: input.chatId,
-      role: input.role,
-      content_text: input.contentText,
-    })
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data;
-}
-
 type PersistedMessage = {
   id: string;
   chat_id: string;
@@ -489,20 +470,4 @@ export async function persistImageChatExchange(input: {
   const result = data as { userMessage?: PersistedMessage; assistantMessage?: PersistedMessage } | null;
   if (!result?.userMessage || !result.assistantMessage) throw new Error("The persisted image exchange was not returned by the database.");
   return result as { userMessage: PersistedMessage; assistantMessage: PersistedMessage };
-}
-
-export async function addAttachments(messageId: string, attachments: AttachmentInput[]) {
-  if (!attachments.length) return;
-  const supabase = createServerSupabaseClient();
-  const { error } = await supabase.from("message_attachments").insert(
-    attachments.map((attachment) => ({
-      message_id: messageId,
-      storage_path: attachment.storagePath,
-      mime_type: attachment.mimeType,
-      width: attachment.width ?? null,
-      height: attachment.height ?? null,
-      size_bytes: attachment.sizeBytes ?? null,
-    })),
-  );
-  if (error) throw error;
 }

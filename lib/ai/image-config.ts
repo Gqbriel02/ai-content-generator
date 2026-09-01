@@ -1,4 +1,3 @@
-export const IMAGE_MODEL_LABEL = "FLUX.2 Klein 4B";
 export const IMAGE_MODEL_ID = "flux-2-klein-4b";
 
 export const IMAGE_ASPECT_RATIOS = {

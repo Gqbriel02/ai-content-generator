@@ -25,17 +25,6 @@ export async function createSignedReadUrl(storagePath: string) {
   return data.signedUrl;
 }
 
-export async function createAttachmentDataUrl(storagePath: string, mimeType: string) {
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).download(storagePath);
-
-  if (error) throw error;
-
-  const arrayBuffer = await data.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString("base64");
-  return `data:${mimeType};base64,${base64}`;
-}
-
 export async function downloadAttachmentObject(storagePath: string) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).download(storagePath);
