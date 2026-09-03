@@ -8,14 +8,16 @@ type Folder = { id: string; name: string };
 type Props = { folder: Folder; opened: boolean; onClose: () => void; onRenamed: (folder: Folder) => void };
 
 export function RenameFolderModal({ folder, opened, onClose, onRenamed }: Props) {
-  const [name, setName] = useState(folder.name);
+  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pending = useRef(false);
+  const trimmed = name.trim();
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const trimmed = name.trim();
     if (!trimmed) { setError("Folder name is required."); return; }
+    if (trimmed === folder.name.trim()) return;
     if (pending.current) return;
     pending.current = true; setSubmitting(true); setError(null);
     try {
@@ -33,12 +35,15 @@ export function RenameFolderModal({ folder, opened, onClose, onRenamed }: Props)
     <Modal opened={opened} onClose={() => !submitting && onClose()} title="Rename folder" centered size="sm"
       closeOnEscape={!submitting} closeOnClickOutside={!submitting} withCloseButton={!submitting}>
       <form onSubmit={submit}><Stack gap="md">
-        <Text size="sm" c="dimmed">Change the name of this folder.</Text>
-        <TextInput label="Folder name" value={name} maxLength={FOLDER_NAME_MAX_LENGTH} error={error}
-          disabled={submitting} data-autofocus onFocus={(event) => event.currentTarget.select()}
+        <div>
+          <Text size="sm" fw={500} mb={4}>Current name</Text>
+          <Text style={{ overflowWrap: "anywhere" }}>{folder.name}</Text>
+        </div>
+        <TextInput label="New folder name" value={name} maxLength={FOLDER_NAME_MAX_LENGTH} error={error}
+          disabled={submitting} data-autofocus
           onChange={(event) => { setName(event.currentTarget.value); setError(null); }} />
         <Group justify="flex-end"><Button type="button" variant="default" disabled={submitting} onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={submitting} disabled={submitting || !name.trim()}>Rename</Button></Group>
+          <Button type="submit" loading={submitting} disabled={submitting || !trimmed || trimmed === folder.name.trim()}>Rename</Button></Group>
       </Stack></form>
     </Modal>
   );

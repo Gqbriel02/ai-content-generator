@@ -1,14 +1,14 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
-import { Button, Group, Modal, Stack, TextInput } from "@mantine/core";
+import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import { CHAT_TITLE_MAX_LENGTH } from "@/lib/validation/chat";
 
 export type RenamedChat = { id: string; title: string; folder_id: string | null };
 type Props = { chat: RenamedChat; onClose: () => void; onRenamed: (chat: RenamedChat) => void };
 
 export function RenameChatModal({ chat, onClose, onRenamed }: Props) {
-  const [title, setTitle] = useState(chat.title);
+  const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pending = useRef(false);
@@ -17,7 +17,7 @@ export function RenameChatModal({ chat, onClose, onRenamed }: Props) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!trimmed) { setError("Chat name is required."); return; }
-    if (trimmed === chat.title.trim()) { onClose(); return; }
+    if (trimmed === chat.title.trim()) return;
     if (pending.current) return;
     pending.current = true; setSubmitting(true); setError(null);
     try {
@@ -35,8 +35,12 @@ export function RenameChatModal({ chat, onClose, onRenamed }: Props) {
   return <Modal opened onClose={() => !submitting && onClose()} title="Rename chat" centered size="sm"
     closeOnEscape={!submitting} closeOnClickOutside={!submitting} withCloseButton={!submitting}>
     <form onSubmit={submit}><Stack gap="md">
-      <TextInput label="Chat name" value={title} maxLength={CHAT_TITLE_MAX_LENGTH} error={error} disabled={submitting}
-        data-autofocus onFocus={(event) => event.currentTarget.select()}
+      <div>
+        <Text size="sm" fw={500} mb={4}>Current name</Text>
+        <Text style={{ overflowWrap: "anywhere" }}>{chat.title}</Text>
+      </div>
+      <TextInput label="New chat name" value={title} maxLength={CHAT_TITLE_MAX_LENGTH} error={error} disabled={submitting}
+        data-autofocus
         onChange={(event) => { setTitle(event.currentTarget.value); setError(null); }} />
       <Group justify="flex-end"><Button type="button" variant="default" disabled={submitting} onClick={onClose}>Cancel</Button>
         <Button type="submit" loading={submitting} disabled={submitting || !trimmed || trimmed === chat.title.trim()}>Rename</Button></Group>

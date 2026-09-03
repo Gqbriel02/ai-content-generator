@@ -30,9 +30,27 @@ describe("RenameChatModal", () => {
     return { onClose, onRenamed };
   }
 
-  it("prefills the current title and Cancel makes no request", async () => {
+  function renameButton() {
+    return [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Rename")!;
+  }
+
+  it("shows the current title and only enables Rename for a different nonblank title", async () => {
     const { onClose } = await render();
-    expect(document.querySelector<HTMLInputElement>("input")?.value).toBe("Current title");
+    expect(document.body.textContent).toContain("Current name");
+    expect(document.body.textContent).toContain("Current title");
+    const input = document.querySelector<HTMLInputElement>("input")!;
+    expect(input.value).toBe("");
+    expect(renameButton().disabled).toBe(true);
+
+    await act(async () => setInputValue(input, "   "));
+    expect(renameButton().disabled).toBe(true);
+    await act(async () => setInputValue(input, "Current title"));
+    expect(renameButton().disabled).toBe(true);
+    await act(async () => setInputValue(input, "  Current title  "));
+    expect(renameButton().disabled).toBe(true);
+    await act(async () => setInputValue(input, "Different title"));
+    expect(renameButton().disabled).toBe(false);
+
     const cancel = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Cancel")!;
     await act(async () => cancel.click());
     expect(onClose).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled();
@@ -49,5 +67,14 @@ describe("RenameChatModal", () => {
     await act(async () => { setInputValue(input, "  Renamed  "); form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(fetch).toHaveBeenCalledWith("/api/chats/chat-id", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ title: "Renamed" }) }));
     expect(onRenamed).toHaveBeenCalledWith(expect.objectContaining({ title: "Renamed", folder_id: "folder-id" }));
+  });
+
+  it("starts empty again after closing and reopening", async () => {
+    await render();
+    const input = document.querySelector<HTMLInputElement>("input")!;
+    await act(async () => setInputValue(input, "Abandoned title"));
+    await act(async () => { root.render(<MantineProvider>{null}</MantineProvider>); });
+    await act(async () => { root.render(<MantineProvider><RenameChatModal chat={chat} onClose={vi.fn()} onRenamed={vi.fn()} /></MantineProvider>); await new Promise((resolve) => setTimeout(resolve, 250)); });
+    expect(document.querySelector<HTMLInputElement>("input")?.value).toBe("");
   });
 });
